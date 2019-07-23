@@ -14,9 +14,12 @@
 // limitations under the License.
 package net.opentsdb.query.execution.cache;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import net.opentsdb.query.QueryContext;
+import net.opentsdb.query.QueryPipelineContext;
+import net.opentsdb.query.QueryResult;
 import net.opentsdb.query.execution.QueryExecution;
 import net.opentsdb.stats.Span;
 
@@ -37,6 +40,23 @@ import net.opentsdb.stats.Span;
  */
 public interface QueryCachePlugin {
 
+  public static interface CacheQueryResult {
+    public byte[] key();
+    public List<QueryResult> results();
+  }
+  
+  public static interface CacheCB {
+    public void onCacheResult(final CacheQueryResult result);
+    
+    public void onCacheError(final Throwable t);
+    
+  }
+  
+  public void fetch(final QueryPipelineContext context, 
+      final byte[][] keys, 
+      final CacheCB callback, 
+      final Span upstream_span);
+  
   /**
    * Attempts to fetch a key from the cache. If no results were found, the 
    * deferred should resolve to a null. Note that temporary cache exceptions
