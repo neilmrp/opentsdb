@@ -15,6 +15,7 @@
 package net.opentsdb.query.execution.cache;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import net.opentsdb.query.QueryContext;
@@ -42,7 +43,7 @@ public interface QueryCachePlugin {
 
   public static interface CacheQueryResult {
     public byte[] key();
-    public List<QueryResult> results();
+    public Map<String, QueryResult> results();
   }
   
   public static interface CacheCB {

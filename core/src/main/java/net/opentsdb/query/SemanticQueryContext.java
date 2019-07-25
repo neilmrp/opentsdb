@@ -14,57 +14,11 @@
 // limitations under the License.
 package net.opentsdb.query;
 
-import java.util.List;
-
-import com.stumbleupon.async.Callback;
-import com.stumbleupon.async.Deferred;
-
-import net.opentsdb.stats.Span;
-
 public class SemanticQueryContext extends BaseQueryContext {
   
   protected SemanticQueryContext(final Builder builder) {
     super((BaseQueryContext.Builder) builder);
     pipeline = new LocalPipeline(this, builder.sinks);
-  }
-  
-  
-  /**
-   * Simple pipeline implementation.
-   */
-  protected class LocalPipeline extends AbstractQueryPipelineContext {
-
-    public LocalPipeline(final QueryContext context, 
-                         final List<QuerySink> direct_sinks) {
-      super(context);
-      if (direct_sinks != null && !direct_sinks.isEmpty()) {
-        sinks.addAll(direct_sinks);
-      }
-    }
-
-    @Override
-    public Deferred<Void> initialize(final Span span) {
-      final Span child;
-      if (span != null) {
-        child = span.newChild(getClass().getSimpleName() + ".initialize()")
-                     .start();
-      } else {
-        child = null;
-      }
-      
-      class SpanCB implements Callback<Void, Void> {
-        @Override
-        public Void call(final Void ignored) throws Exception {
-          if (child != null) {
-            child.setSuccessTags().finish();
-          }
-          return null;
-        }
-      }
-      
-      return initializeGraph(child).addCallback(new SpanCB());
-    }
-    
   }
   
   public static Builder newBuilder() {

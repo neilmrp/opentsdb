@@ -92,8 +92,8 @@ public class SlicedTimeSeries implements TimeSeries {
     if (!types.contains(type)) {
       return Optional.empty();
     }
-    
-    return Optional.of(new LocalIterator(type));
+    final TypedTimeSeriesIterator<? extends TimeSeriesDataType> it = new LocalIterator(type);
+    return Optional.of(it);
   }
   
   @Override

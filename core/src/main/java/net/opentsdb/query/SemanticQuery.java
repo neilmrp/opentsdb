@@ -315,6 +315,21 @@ public class SemanticQuery implements TimeSeriesQuery {
     return log_level.ordinal() >= LogLevel.WARN.ordinal();
   }
   
+  public Builder toBuilder() {
+    Builder builder = newBuilder();
+    builder.setStart(start)
+           .setEnd(end)
+           .setTimeZone(time_zone)
+           .setMode(mode)
+           .setExecutionGraph(Lists.newArrayList(execution_graph))
+           .setLogLevel(log_level)
+           .setSerdesConfigs(Lists.newArrayList(serdes_options));
+    if (filters != null) {
+      builder.setFilters(Lists.newArrayList(filters.values()));
+    }
+    return builder;
+  }
+  
   public static Builder newBuilder() {
     return new Builder();
   }

@@ -14,6 +14,8 @@
 // limitations under the License.
 package net.opentsdb.query.execution.cache;
 
+import java.util.Collections;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -35,7 +37,10 @@ import net.opentsdb.core.BaseTSDBPlugin;
 import net.opentsdb.core.DefaultTSDB;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.query.QueryContext;
+import net.opentsdb.query.QueryPipelineContext;
+import net.opentsdb.query.QueryResult;
 import net.opentsdb.query.execution.QueryExecution;
+import net.opentsdb.query.execution.cache.QueryCachePlugin.CacheCB;
 import net.opentsdb.stats.Span;
 import net.opentsdb.stats.TsdbTrace;
 import net.opentsdb.utils.Bytes.ByteArrayKey;
@@ -136,6 +141,28 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
       return Deferred.fromResult(null);
     } catch (Exception e) {
       return Deferred.<Object>fromResult(e);
+    }
+  }
+  
+  @Override
+  public void fetch(final QueryPipelineContext context, 
+      final byte[][] keys, 
+      final CacheCB callback, 
+      final Span upstream_span) {
+    for (final byte[] key : keys) {
+      callback.onCacheResult(new CacheQueryResult() {
+
+        @Override
+        public byte[] key() {
+          return key;
+        }
+
+        @Override
+        public Map<String, QueryResult> results() {
+          return null; // to simulte a cache miss. Empty to simulate a negative cache hit
+        }
+        
+      });
     }
   }
   

@@ -594,7 +594,7 @@ public abstract class AbstractQueryPipelineContext implements
    * A simple pass-through wrapper that will decrement the proper counter
    * when the result is closed.
    */
-  private class ResultWrapper extends BaseWrappedQueryResult {
+  public class ResultWrapper extends BaseWrappedQueryResult {
     
     ResultWrapper(final QueryResult result) {
       super(result);
@@ -603,6 +603,30 @@ public abstract class AbstractQueryPipelineContext implements
     @Override
     public QueryNode source() {
       return result.source();
+    }
+    
+    public void closeWrapperOnly() {
+      if (result.source().config() instanceof TimeSeriesDataSourceConfig ||
+          result.source().config().joins()) {
+        AtomicInteger cntr = countdowns.get(result.dataSource());
+        if (cntr == null) {
+          LOG.error("Unexpected result source, no counter for: " 
+              + result.dataSource());
+        } else {
+          cntr.decrementAndGet();
+        }
+      } else {
+        AtomicInteger cntr = countdowns.get(result.source().config().getId() + ":" 
+            + result.dataSource());
+        if (cntr == null) {
+          LOG.error("Unexpected result source, noo counter for: " 
+              + result.source().config().getId() + ":" 
+              + result.dataSource());
+        } else {
+          cntr.decrementAndGet();
+        }
+      }
+      checkComplete();
     }
     
     @Override

@@ -126,6 +126,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
   @Override
   public Deferred<Object> serialize(final QueryResult result,
                                     final Span span) {
+    System.out.println("-------- SERDES.........");
     if (result == null) {
       throw new IllegalArgumentException("Data may not be null.");
     }
