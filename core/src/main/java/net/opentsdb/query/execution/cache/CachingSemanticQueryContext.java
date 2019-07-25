@@ -257,7 +257,9 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
         // TODO - implement
         // TODO - send in thread pool
         System.out.println("SINKS: " + sinks);
-        onNext(new CombinedResult(results));
+        for (final QuerySink sink : sinks) {
+          sink.onNext(new CombinedResult(results));
+        }
       }
       System.out.println("SENT........ " + sorted.size());
       } catch (Throwable t) {
@@ -360,9 +362,9 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
 
       @Override
       public void close() {
-        for (final TimeSeries ts : series) {
-          ts.close();
-        }
+//        for (final TimeSeries ts : series) {
+//          ts.close();
+//        }
       }
       
     }
@@ -468,9 +470,9 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
             sink.onComplete();
           }
         }
-        for (final TimeSeries ts : time_series.values()) {
-          ts.close();
-        }
+//        for (final TimeSeries ts : time_series.values()) {
+//          ts.close();
+//        }
       }
 
       @Override
