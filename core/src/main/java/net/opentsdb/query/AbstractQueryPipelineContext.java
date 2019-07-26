@@ -21,6 +21,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import net.opentsdb.query.execution.cache.CacheSink;
+import net.opentsdb.query.execution.cache.CacheSinkConfig;
+import net.opentsdb.query.execution.cache.CacheSinkFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -106,7 +109,7 @@ public abstract class AbstractQueryPipelineContext implements
     }
     this.context = context;
     plan = new DefaultQueryPlanner(this, (QueryNode) this);
-    sinks = Lists.newArrayListWithExpectedSize(1);
+    sinks = Lists.newArrayListWithExpectedSize(2);
     countdowns = Maps.newHashMap();
     pts = Maps.newConcurrentMap();
     finished_sources = Maps.newConcurrentMap();
@@ -543,11 +546,19 @@ public abstract class AbstractQueryPipelineContext implements
                   + config.getId());
             }
             sinks.add(sink);
-            if (sinks.size() > 1) {
-              throw new UnsupportedOperationException("Only one sink allowed for now, sorry!");
-            }
+            // TODO - ADJUST MAX SIZE OF SINKS
+//            if (sinks.size() > 1) {
+//              throw new UnsupportedOperationException("Only one sink allowed for now, sorry!");
+//            }
           }
         }
+//
+//        CacheSinkConfig cacheConfig = CacheSinkConfig.newBuilder()
+//                .setId(CacheSinkFactory.TYPE)
+//                .setAsync(async)
+//                .setSerdesOptions(context.)
+//
+//        sinks.add(new CacheSink(context))
         
         for (final String source : plan.serializationSources()) {
           countdowns.put(source, new AtomicInteger(sinks.size()));

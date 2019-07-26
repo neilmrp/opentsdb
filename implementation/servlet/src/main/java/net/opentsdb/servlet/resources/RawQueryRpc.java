@@ -33,6 +33,9 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
+import net.opentsdb.query.execution.cache.CacheSink;
+import net.opentsdb.query.execution.cache.CacheSinkConfig;
+import net.opentsdb.query.execution.cache.CacheSinkFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -193,7 +196,8 @@ public class RawQueryRpc {
           .setId("JsonV3QuerySerdes")
           .build();
     }
-    
+
+
     SemanticQueryContext context = (SemanticQueryContext) SemanticQueryContext.newBuilder()
         .setTSDB(tsdb)
         .setQuery(query)
@@ -205,6 +209,13 @@ public class RawQueryRpc {
         .addSink(ServletSinkConfig.newBuilder()
             .setId(ServletSinkFactory.TYPE)
             .setSerdesOptions(serdes)
+            .setRequest(request)
+            .setAsync(async)
+            .setStatsTimer(timer)
+            .build())
+        .addSink(CacheSinkConfig.newBuilder()
+            .setId(CacheSinkFactory.TYPE)
+            .setSerdesOptions(serdes)   // should pass in a PBufSerdesOptions
             .setRequest(request)
             .setAsync(async)
             .setStatsTimer(timer)

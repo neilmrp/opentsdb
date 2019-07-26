@@ -45,58 +45,58 @@ import net.opentsdb.utils.JSON;
 
 /**
  * A simple sink that will serialize the results.
- * 
+ *
  * @since 3.0
  */
 public class ServletSink implements QuerySink, SerdesCallback {
   private static final Logger LOG = LoggerFactory.getLogger(
       ServletSink.class);
   private static final Logger QUERY_LOG = LoggerFactory.getLogger("QueryLog");
-  
+
   /** The context we're operating under. */
   private final QueryContext context;
-  
+
   /** The sink config. */
   private final ServletSinkConfig config;
-  
+
   /** The serializer. */
   private final TimeSeriesSerdes serdes;
-  
+
   /** TEMP - This sucks but we need to figure out proper async writes. */
   private final ByteArrayOutputStream stream;
-  
+
   /** The query sink callback. Only one allowed. */
   private QuerySinkCallback callback;
-  
+
   /**
    * Default ctor.
    * @param context The non-null context.
    * @param config The non-null config.
    */
-  public ServletSink(final QueryContext context, 
+  public ServletSink(final QueryContext context,
                      final ServletSinkConfig config) {
     this.context = context;
     this.config = config;
-    
+
     final SerdesFactory factory = context.tsdb().getRegistry()
         .getPlugin(SerdesFactory.class, config.serdesOptions().getType());
     if (factory == null) {
       throw new IllegalArgumentException("Unable to find a serdes "
           + "factory for the type: " + config.serdesOptions().getType());
     }
-    
+
     // TODO - noooo!!!!
     stream = new ByteArrayOutputStream();
     serdes = factory.newInstance(
-        context, 
-        config.serdesOptions(), 
+        context,
+        config.serdesOptions(),
         stream);
     if (serdes == null) {
       throw new IllegalArgumentException("Factory returned a null "
           + "instance for the type: " + config.serdesOptions().getType());
     }
   }
-  
+
   @Override
   public void onComplete() {
     if (context.query().isTraceEnabled()) {
@@ -126,7 +126,7 @@ public class ServletSink implements QuerySink, SerdesCallback {
 //        return;
 //      }
       //config.async().complete();
-      config.async().dispatch();
+//      config.async().dispatch();
       logComplete();
     } catch (Exception e) {
       LOG.error("Unexpected exception dispatching async request for "
@@ -146,14 +146,14 @@ public class ServletSink implements QuerySink, SerdesCallback {
       onError(next.exception());
       return;
     }
-    
+
     if (next.error() != null) {
       onError(new QueryExecutionException(next.error(), 0));
       return;
     }
-    
+
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Successful response for query=" 
+      LOG.debug("Successful response for query="
           + JSON.serializeToString(
               ImmutableMap.<String, Object>builder()
               // TODO - possible upstream headers
@@ -162,32 +162,32 @@ public class ServletSink implements QuerySink, SerdesCallback {
               .build()));
     }
     if (context.query().isTraceEnabled()) {
-      context.logTrace(next.source(), "Received response: " 
+      context.logTrace(next.source(), "Received response: "
           + next.source().config().getId() + ":" + next.dataSource());
     }
-    
+
     final Span serdes_span = context.stats().querySpan() != null ?
-        context.stats().querySpan().newChild("onNext_" 
+        context.stats().querySpan().newChild("onNext_"
             + next.source().config().getId() + ":" + next.dataSource())
         .start()
         : null;
-    
+
     class FinalCB implements Callback<Void, Object> {
       @Override
       public Void call(final Object ignored) throws Exception {
         if (ignored != null && ignored instanceof Throwable) {
-          LOG.error("Failed to serialize result: " 
-              + next.source().config().getId() + ":" 
+          LOG.error("Failed to serialize result: "
+              + next.source().config().getId() + ":"
               + next.dataSource(), (Throwable) ignored);
         }
         try {
           next.close();
         } catch (Throwable t) {
-          LOG.warn("Failed to close result: " 
+          LOG.warn("Failed to close result: "
               + next.source().config().getId() + ":" + next.dataSource(), t);
         }
         if (context.query().isTraceEnabled()) {
-          context.logTrace(next.source(), "Finished serializing response: " 
+          context.logTrace(next.source(), "Finished serializing response: "
               + next.source().config().getId() + ":" + next.dataSource());
         }
         if (serdes_span != null) {
@@ -196,7 +196,7 @@ public class ServletSink implements QuerySink, SerdesCallback {
         return null;
       }
     }
-    
+
     try {
       serdes.serialize(next, serdes_span)
         .addBoth(new FinalCB());
@@ -207,7 +207,7 @@ public class ServletSink implements QuerySink, SerdesCallback {
   }
 
   @Override
-  public void onNext(final PartialTimeSeries next, 
+  public void onNext(final PartialTimeSeries next,
                      final QuerySinkCallback callback) {
     if (this.callback == null) {
       synchronized (this) {
@@ -216,22 +216,22 @@ public class ServletSink implements QuerySink, SerdesCallback {
         }
       }
     }
-    
+
     if (this.callback != callback) {
       // TODO WTF?
     }
     serdes.serialize(next, this, null /** TODO */);
   }
-  
+
   @Override
   public void onError(final Throwable t) {
-    LOG.error("Exception for query: " 
+    LOG.error("Exception for query: "
         + JSON.serializeToString(context.query()), t);
     context.logError("Error sent to the query sink: " + t.getMessage());
     try {
       if (t instanceof QueryExecutionException) {
         QueryExecutionExceptionMapper.serialize(
-            (QueryExecutionException) t, 
+            (QueryExecutionException) t,
             config.async().getResponse());
       } else {
         GenericExceptionMapper.serialize(t, config.async().getResponse());
@@ -242,11 +242,11 @@ public class ServletSink implements QuerySink, SerdesCallback {
       LOG.error("WFT? response may have been serialized?", t1);
     }
   }
-  
+
   void logComplete() {
     logComplete(null);
   }
-  
+
   void logComplete(final Throwable t) {
     if (config.statsTimer() != null) {
       try {
@@ -260,7 +260,7 @@ public class ServletSink implements QuerySink, SerdesCallback {
               local_namespace = ((TimeSeriesDataSourceConfig) config).getMetric().getMetric();
               local_namespace = local_namespace.substring(0, local_namespace.indexOf('.'));
             }
-            
+
             if (namespace == null) {
               namespace = local_namespace;
             } else {
@@ -272,8 +272,8 @@ public class ServletSink implements QuerySink, SerdesCallback {
             }
           }
         }
-        
-        config.statsTimer().stop("user", context.authState() != null ? 
+
+        config.statsTimer().stop("user", context.authState() != null ?
             context.authState().getUser() : "Unkown",
             "namespace", namespace,
             "endpoint", config.request().getRequestURI() /* TODO - trim */);
@@ -281,17 +281,17 @@ public class ServletSink implements QuerySink, SerdesCallback {
         LOG.error("Failed to record timer", e);
       }
     }
-    
+
     if (context.stats() != null) {
       context.stats().emitStats();
     }
-    
-    LOG.info("Completing query=" 
+
+    LOG.info("Completing query="
       + JSON.serializeToString(ImmutableMap.<String, Object>builder()
       // TODO - possible upstream headers
       .put("queryId", Bytes.byteArrayToString(context.query().buildHashCode().asBytes()))
       .put("user", context.authState() != null ? context.authState().getPrincipal().getName() : "Unkown")
-      .put("traceId", context.stats().trace() != null ? 
+      .put("traceId", context.stats().trace() != null ?
           context.stats().trace().traceId() : "")
       .put("status", Response.Status.OK)
       .put("error", t == null ? "null" : t.toString())
@@ -300,21 +300,21 @@ public class ServletSink implements QuerySink, SerdesCallback {
       .put("statSDS", context.stats() == null ? 0 : context.stats().serializedDataSize())
       .put("statSTS", context.stats() == null ? 0 : context.stats().serializedTimeSeriesCount())
       .build()));
-    
-    QUERY_LOG.info("Completing query=" 
+
+    QUERY_LOG.info("Completing query="
        + JSON.serializeToString(ImmutableMap.<String, Object>builder()
       // TODO - possible upstream headers
       .put("queryId", Bytes.byteArrayToString(context.query().buildHashCode().asBytes()))
       .put("user", context.authState() != null ? context.authState().getPrincipal().getName() : "Unkown")
       //.put("queryHash", Bytes.byteArrayToString(context.query().buildTimelessHashCode().asBytes()))
-      .put("traceId", context.stats().trace() != null ? 
+      .put("traceId", context.stats().trace() != null ?
           context.stats().trace().traceId() : "")
       .put("status", Response.Status.OK)
       //.put("trace", trace.serializeToString())
       .put("query", JSON.serializeToString(context.query()))
       .put("error", t == null ? "null" : t.toString())
       .build()));
-    
+
     if (context.stats().querySpan() != null) {
       if (t != null) {
         context.stats().querySpan()
@@ -325,7 +325,7 @@ public class ServletSink implements QuerySink, SerdesCallback {
         context.stats().querySpan()
         .setSuccessTags()
         .setTag("query", JSON.serializeToString(context.query()))
-        .finish();        
+        .finish();
       }
     }
   }
@@ -334,7 +334,7 @@ public class ServletSink implements QuerySink, SerdesCallback {
   public void onComplete(final PartialTimeSeries pts) {
     callback.onComplete(pts);
   }
-  
+
   @Override
   public void onError(final PartialTimeSeries pts, final Throwable t) {
     callback.onError(pts, t);

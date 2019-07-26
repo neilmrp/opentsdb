@@ -309,7 +309,10 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
         json.writeStartObject();
         json.writeArrayFieldStart("results");
       }
+      System.out.println("before end array " + json);
+
       json.writeEndArray();
+      System.out.println("after end array");
 
       if (context.query().getLogLevel() != LogLevel.OFF) {
         json.writeArrayFieldStart("log");

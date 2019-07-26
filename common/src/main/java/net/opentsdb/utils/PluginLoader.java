@@ -132,7 +132,7 @@ public final class PluginLoader {
     final ServiceLoader<T> serviceLoader = ServiceLoader.load(type);
     Iterator<T> it = serviceLoader.iterator();
     if (!it.hasNext()) {
-      
+
       try {
         final Class<?> clazz = Class.forName(plugin_name);
         return (T) clazz.newInstance();
@@ -141,17 +141,17 @@ public final class PluginLoader {
           LOG.debug("Nothing on the class path for " + plugin_name);
         }
       } catch (InstantiationException e) {
-        LOG.warn("Found an instance of " + plugin_name 
+        LOG.warn("Found an instance of " + plugin_name
             + " but failed to instantiate it.", e);
       } catch (IllegalAccessException e) {
-        LOG.warn("Found an instance of " + plugin_name 
+        LOG.warn("Found an instance of " + plugin_name
             + " but failed to instantiate it.", e);
       }
-      
+
       LOG.warn("Unable to locate any plugins of the type: " + type.getName());
       return null;
     }
-    
+
     while(it.hasNext()) {
       T plugin = it.next();
       if (plugin.getClass().getName().equals(plugin_name)) {
