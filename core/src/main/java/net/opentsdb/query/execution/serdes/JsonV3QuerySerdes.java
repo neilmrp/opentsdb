@@ -84,7 +84,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
 
   /** The options for this serialization. */
   private final SerdesOptions options;
-  
+
   /** The query start and end timestamps. */
   private final TimeStamp start;
   private final TimeStamp end;
@@ -117,7 +117,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
     this.context = context;
     this.options = options;
     this.stream = stream;
-    
+
     start = context.query().startTime();
     end = context.query().endTime();
   }
@@ -144,7 +144,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
       throw new RuntimeException("Failed to instantiate a JSON "
           + "generator", e1);
     }
-    
+
     final List<TimeSeries> series;
     final List<Deferred<TimeSeriesStringId>> deferreds;
     if (result.idType() == Const.TS_BYTE_ID) {
@@ -266,7 +266,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
               "Unexpected exception "
               + "serializing: " + result, 500, e));
         }
-        
+
         json.close();
         final byte[] serialized = baos.toByteArray();
         synchronized (serialized_results) {
@@ -998,7 +998,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
     }
 
   }
-  
+
   private void writeStatus(StatusValue statusValue, final JsonGenerator json) throws IOException {
 
     byte[] statusCodeArray = statusValue.statusCodeArray();

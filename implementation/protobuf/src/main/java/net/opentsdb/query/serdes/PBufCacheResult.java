@@ -9,7 +9,6 @@ import net.opentsdb.data.*;
 
 import net.opentsdb.data.pbuf.QueryResultPB;
 import net.opentsdb.data.pbuf.TimeSeriesPB;
-import net.opentsdb.data.pbuf.TimeSpecificationPB;
 import net.opentsdb.data.pbuf.TimeStampPB;
 import net.opentsdb.data.pbuf.NumericSegmentPB;
 import net.opentsdb.data.pbuf.NumericSummarySegmentPB;
@@ -33,6 +32,11 @@ import java.io.IOException;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
+/**
+ * A segmenter that breaks a QueryResult into multiple, smaller QueryResults
+ * used to cache the fetched data into blocks.
+ *
+ */
 public class PBufCacheResult implements CacheQueryResult {
 
     private static final Logger LOG = LoggerFactory.getLogger(PBufCacheResult.class);
@@ -41,7 +45,6 @@ public class PBufCacheResult implements CacheQueryResult {
     private final SerdesOptions options;
     private final QueryNode node;
     private final QueryContext context;
-    private int count = 1;
 
     // store iterators so you don't have to re-iterate through the same elements
     private List<List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>>> iterators;
@@ -91,20 +94,11 @@ public class PBufCacheResult implements CacheQueryResult {
         long start = node.pipelineContext().query().startTime().epoch();
         long end = node.pipelineContext().query().endTime().epoch();
 
-//        System.out.println("metadata");
-//        System.out.println("Total starting " + start);
-//        System.out.println("Total ending " + end);
-
         // necessary variable for PBufQueryResult instantiation
         final PBufSerdesFactory factory = new PBufSerdesFactory();
 
 
         for (long threshold = start + blocksize; threshold - blocksize <= end; threshold += blocksize) {
-//            System.out.println("Block " + count);
-            count++;
-//            System.out.println("Starting a new threshold at " + threshold);
-
-            // if timestamp < threshold, include it in the temporary iterator/timeseries
 
             // for each timeseries, create a new version of the timeseries and versions of iterators,
             // and for each iterator, iterate through and store the valid timeseriesvalues in the new iterators
@@ -125,7 +119,7 @@ public class PBufCacheResult implements CacheQueryResult {
                         numericData = convertNumericType(it, curr, threshold, blocksize);
                         buildIterator = new PBufNumericIterator(numericData);
                     }
-                    // TODO - Fix up convertNumericSummaryType
+                    // test convertNumericSummaryType
                     else if (curr.getType().equals(NumericSummaryType.TYPE)) {
                         buildIterator = new PBufNumericSummaryIterator(convertNumericSummaryType(it, curr, threshold, blocksize));
                     }
@@ -175,8 +169,8 @@ public class PBufCacheResult implements CacheQueryResult {
             // set datasource of PBufQueryResult
             pbufBlockBuilder = pbufBlockBuilder.setDataSource(result.dataSource());
 
-            // setting timespecification to the default value (from result), will need to modify this
-            TimeSpecification timespec = result.timeSpecification();
+            // TODO: setting timespecification to the default value (from result), will need to modify this
+//            TimeSpecification timespec = result.timeSpecification();
 
 //            if (timespec != null) {
 //                pbufBlockBuilder.setTimeSpecification(TimeSpecificationPB.TimeSpecification.newBuilder()
@@ -206,12 +200,18 @@ public class PBufCacheResult implements CacheQueryResult {
     }
 
 
-
+    /**
+     * Selects the valid data that fits in the current time block for a NumericType Iterator.
+     * @param it Current TimeSeries' list of value iterators.
+     * @param curr Specific iterator whose values we are adding to the cache block.
+     * @param threshold All values below this threshold will be included in the cache block.
+     * @param blocksize Size of the cache block.
+     * @return TimeSeriesData used to construct a new TypedTimeSeriesIterator.
+     */
     public TimeSeriesData convertNumericType(final List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> it,
                                              final TypedTimeSeriesIterator<? extends TimeSeriesDataType> curr,
                                              final long threshold,
-                                             final long blocksize
-    ) {
+                                             final long blocksize) {
 
         final long span = calculateSpan(blocksize);
         byte encode_on = NumericCodec.encodeOn(span, NumericCodec.LENGTH_MASK);
@@ -227,7 +227,6 @@ public class PBufCacheResult implements CacheQueryResult {
             TimeStampPB.TimeStamp first = null;
             TimeStampPB.TimeStamp last = null;
 
-//            System.out.println("Block starting at " + (threshold - blocksize));
             final TimeStampPB.TimeStamp.Builder tsBuilder = TimeStampPB.TimeStamp.newBuilder()
                     .setEpoch(threshold - blocksize)
                     .setNanos((threshold - blocksize) * (1000L * 1000L * 1000L));
@@ -261,7 +260,6 @@ public class PBufCacheResult implements CacheQueryResult {
 
                 long current_offset = offset(first, value.timestamp(), result.resolution());
 
-
                 if (current_offset == previous_offset) {
                     throw new SerdesException("With results set to a resolution of "
                             + result.resolution() + " one or more data points with "
@@ -283,9 +281,6 @@ public class PBufCacheResult implements CacheQueryResult {
                     baos.write(b, 8 - encode_on, encode_on);
                     baos.write(vle);
 
-//                    System.out.println("So far " + Arrays.toString(baos.toByteArray()));
-//                    System.out.println(Arrays.toString(b));
-//                    System.out.println(Bytes.getLong(b) >>  NumericCodec.FLAG_BITS);
                 } else {
                     final double v = value.value().doubleValue();
                     final byte[] vle = NumericType.fitsInFloat(v) ?
@@ -297,7 +292,6 @@ public class PBufCacheResult implements CacheQueryResult {
                             8 - encode_on, encode_on);
                     baos.write(vle);
                 }
-
 
                 // nulling borderline value until next cache block
                 borderlineValues.get(iterators.indexOf(it)).put(curr.getType().toString(), null);
@@ -331,9 +325,6 @@ public class PBufCacheResult implements CacheQueryResult {
                     .setResolution(result.resolution().ordinal())
                     .setData(ByteString.copyFrom(baos.toByteArray()))
                     .build();
-
-//            System.out.println("PBuf baos data: " + Arrays.toString(ns.getData().toByteArray()));
-//            System.out.println("PBuf baos data: " + ns.getEncodedOn() + " " + ns.getResolution());
 
             final long startepoch = first == null ? threshold - blocksize : first.getEpoch();
             final long startnanos = first == null ? (threshold - blocksize) * (1000L * 1000L * 1000L) : first.getNanos();
@@ -377,12 +368,18 @@ public class PBufCacheResult implements CacheQueryResult {
     }
 
 
-
+    /**
+     * Selects the valid data that fits in the current time block for a NumericSummaryType Iterator.
+     * @param it Current TimeSeries' list of value iterators.
+     * @param curr Specific iterator whose values we are adding to the cache block.
+     * @param threshold All values below this threshold will be included in the cache block.
+     * @param blocksize Size of the cache block.
+     * @return TimeSeriesData used to construct a new TypedTimeSeriesIterator.
+     */
     public TimeSeriesData convertNumericSummaryType(final List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> it,
                                                     final TypedTimeSeriesIterator<? extends TimeSeriesDataType> curr,
                                                     final long threshold,
-                                                    final long blocksize
-    ) {
+                                                    final long blocksize) {
 
         final long span = calculateSpan(blocksize);
         byte encode_on = NumericCodec.encodeOn(span, NumericCodec.LENGTH_MASK);
@@ -398,7 +395,6 @@ public class PBufCacheResult implements CacheQueryResult {
             TimeStampPB.TimeStamp first = null;
             TimeStampPB.TimeStamp last = null;
 
-//            System.out.println("Block starting at " + (threshold - blocksize));
             final TimeStampPB.TimeStamp.Builder tsBuilder = TimeStampPB.TimeStamp.newBuilder()
                     .setEpoch(threshold - blocksize)
                     .setNanos((threshold - blocksize) * (1000L * 1000L * 1000L));
@@ -492,9 +488,6 @@ public class PBufCacheResult implements CacheQueryResult {
                     }
                 }
 
-
-
-
                 // nulling borderline value until next cache block
                 borderlineValues.get(iterators.indexOf(it)).put(curr.getType().toString(), null);
 
@@ -510,7 +503,6 @@ public class PBufCacheResult implements CacheQueryResult {
                 last = ending.build();
                 value = null;
                 valueSetToBorder = false;
-
             }
 
             // if exhausted values in iterator, nullify borderline value so that next block doesn't include it
@@ -532,9 +524,6 @@ public class PBufCacheResult implements CacheQueryResult {
                         .setSummaryId(entry.getKey())
                         .setData(ByteString.copyFrom(entry.getValue().toByteArray())));
             }
-
-//            System.out.println("PBuf baos data: " + Arrays.toString(ns.getData().toByteArray()));
-//            System.out.println("PBuf baos data: " + ns.getEncodedOn() + " " + ns.getResolution());
 
             final long startepoch = first == null ? threshold - blocksize : first.getEpoch();
             final long startnanos = first == null ? (threshold - blocksize) * (1000L * 1000L * 1000L) : first.getNanos();
@@ -576,16 +565,6 @@ public class PBufCacheResult implements CacheQueryResult {
         }
 
     }
-
-
-
-
-
-
-
-
-
-
 
 
     // TODO - Implement MILLIS
@@ -631,6 +610,11 @@ public class PBufCacheResult implements CacheQueryResult {
         return span;
     }
 
+    /**
+     * Checks whether all data has been processed and placed
+     * into Query Result segments.
+     * @return Boolean denoting whether segmentation is complete.
+     */
     private boolean resultExhausted() {
         for (HashMap<String, TimeSeriesValue> timeSeries : borderlineValues) {
             for (TimeSeriesValue currentVal : timeSeries.values()) {

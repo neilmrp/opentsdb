@@ -15,7 +15,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 /**
- * A simple sink config for the Servlet resources.
+ * A simple cache config.
  *
  * @since 3.0
  */

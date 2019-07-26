@@ -1,13 +1,10 @@
 package net.opentsdb.query.execution.cache;
 
 import java.io.ByteArrayOutputStream;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 import javax.ws.rs.core.Response;
 
-import com.google.common.collect.Lists;
 import net.opentsdb.data.*;
 import net.opentsdb.data.types.numeric.NumericType;
 import net.opentsdb.query.*;
@@ -30,7 +27,7 @@ import net.opentsdb.utils.JSON;
 
 
 /**
- * A simple sink that will serialize the results.
+ * A simple sink that will serialize the results and store in cache.
  *
  * @since 3.0
  */
@@ -54,7 +51,6 @@ public class CacheSink implements QuerySink, SerdesCallback {
     /** The query sink callback. Only one allowed. */
     private QuerySinkCallback callback;
 
-//    private final String pbufplugin;
 
     /**
      * Default ctor.
@@ -65,8 +61,6 @@ public class CacheSink implements QuerySink, SerdesCallback {
                      final CacheSinkConfig config) {
         this.context = context;
         this.config = config;
-
-//        System.out.println(config.serdesOptions().getType());
 
         // serdesOptions here should be a PBufSerdesOptions
         final SerdesFactory factory = context.tsdb().getRegistry()
@@ -80,19 +74,15 @@ public class CacheSink implements QuerySink, SerdesCallback {
         // TODO - noooo!!!!
         stream = new ByteArrayOutputStream();
 
-        // this serdes should be a PBufSerdes instance
-//        serdes = context.tsdb().getRegistry().getPlugin()
-
         serdes = factory.newInstance(
                 context,
                 config.serdesOptions(),
                 stream);
-//        System.out.println(serdes.getClass());
+
         if (serdes == null) {
             throw new IllegalArgumentException("Factory returned a null "
                     + "instance for the type: " + config.serdesOptions().getType());
         }
-//        pbufplugin = context.tsdb().getRegistry().getPlugin()
     }
 
     @Override
@@ -207,16 +197,6 @@ public class CacheSink implements QuerySink, SerdesCallback {
             final CacheQueryResultFactory cacheSegmentFactory = context.tsdb().getRegistry()
                     .getPlugin(CacheQueryResultFactory.class, null);
 
-//            System.out.println("******************");
-//            System.out.println(cacheSegmentFactory);
-
-//            System.out.println("******************");
-//            System.out.println("starting segmentation");
-//            System.out.println(context.query().startTime().epoch() + " " + context.query().endTime().epoch());
-//
-            System.out.println("*******Display Original Result*******");
-            displayQueryResult(next, true);
-
 
             CacheQueryResult cacheSegmenter = cacheSegmentFactory.newSerializer(next, config.serdesOptions());
             List<QueryResult> segmentedResults = cacheSegmenter.segmentResult(next, blocksize);
@@ -227,13 +207,13 @@ public class CacheSink implements QuerySink, SerdesCallback {
             }
 
 //             have to implement serialization
-            for (QueryResult segment : segmentedResults) {
-                serdes.serialize(segment, serdes_span)
-                        .addBoth(new FinalCB());
-            }
+//            for (QueryResult segment : segmentedResults) {
+//                serdes.serialize(segment, serdes_span)
+//                        .addBoth(new FinalCB());
+//            }
 
-//            serdes.serialize(next, serdes_span)
-//                    .addBoth(new FinalCB());
+            serdes.serialize(next, serdes_span)
+                    .addBoth(new FinalCB());
 
 
         } catch (Exception e) {

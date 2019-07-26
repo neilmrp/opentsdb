@@ -8,7 +8,10 @@ import net.opentsdb.core.TSDB;
 import net.opentsdb.query.CacheQueryResultFactory;
 import net.opentsdb.query.QueryResult;
 
-
+/**
+ * A simple factory for the protobuf serialization and caching functionality.
+ *
+ */
 public class PBufCacheResultFactory extends BaseTSDBPlugin implements CacheQueryResultFactory {
     public static final String TYPE = "PBufCacheResult";
 

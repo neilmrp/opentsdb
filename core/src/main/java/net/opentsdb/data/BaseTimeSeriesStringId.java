@@ -44,7 +44,7 @@ import net.opentsdb.common.Const;
  * A basic {@link TimeSeriesStringId} implementation that accepts strings for all
  * parameters. Includes a useful builder and after building, all lists are 
  * immutable.
- * 
+ *
  * @since 3.0
  */
 @JsonInclude(Include.NON_NULL)
@@ -54,28 +54,28 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
 
   /** Whether or not the strings are specially encoded values. */
   protected boolean encoded;
-  
+
   /** An optional alias. */
   protected String alias;
-  
+
   /** An optional namespace. */
   protected String namespace;
-  
+
   /** The required non-null and non-empty metric name. */
   protected String metric;
-  
+
   /** A map of tag key/value pairs for the ID. */
   protected Map<String, String> tags;
-  
+
   /** An optional list of aggregated tags for the ID. */
   protected List<String> aggregated_tags;
-  
+
   /** An optional list of disjoint tags for the ID. */
   protected List<String> disjoint_tags;
-  
+
   /** A list of unique IDs rolled up into the ID. */
   protected Set<String> unique_ids;
-  
+
   /** A cached hash code ID. */
   protected volatile long cached_hash;
 
@@ -177,17 +177,17 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
   @Override
   public int compareTo(final TimeSeriesStringId o) {
     return ComparisonChain.start()
-        .compare(Strings.nullToEmpty(alias), Strings.nullToEmpty(o.alias()))
-        .compare(Strings.nullToEmpty(namespace), Strings.nullToEmpty(o.namespace()))
-        .compare(metric, o.metric())
-        .compare(tags, o.tags(), STR_MAP_CMP)
-        .compare(aggregated_tags, o.aggregatedTags(), 
-            Ordering.<String>natural().lexicographical().nullsFirst())
-        .compare(disjoint_tags, o.disjointTags(), 
-            Ordering.<String>natural().lexicographical().nullsFirst())
-        .compare(unique_ids, o.uniqueIds(), 
-            Ordering.<String>natural().lexicographical().nullsFirst())
-        .result();
+            .compare(Strings.nullToEmpty(alias), Strings.nullToEmpty(o.alias()))
+            .compare(Strings.nullToEmpty(namespace), Strings.nullToEmpty(o.namespace()))
+            .compare(metric, o.metric())
+            .compare(tags, o.tags(), STR_MAP_CMP)
+            .compare(aggregated_tags, o.aggregatedTags(),
+                    Ordering.<String>natural().lexicographical().nullsFirst())
+            .compare(disjoint_tags, o.disjointTags(),
+                    Ordering.<String>natural().lexicographical().nullsFirst())
+            .compare(unique_ids, o.uniqueIds(),
+                    Ordering.<String>natural().lexicographical().nullsFirst())
+            .result();
   }
 
   @Override
@@ -196,9 +196,9 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
       return true;
     if (o == null || !(o instanceof TimeSeriesStringId))
       return false;
-    
+
     final TimeSeriesStringId id = (TimeSeriesStringId) o;
-    
+
     if (!Objects.equal(alias, id.alias())) {
       return false;
     }
@@ -222,7 +222,7 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
     }
     return true;
   }
-  
+
   @Override
   public int hashCode() {
     if (cached_hash == 0) {
@@ -230,7 +230,7 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
     }
     return Long.hashCode(cached_hash);
   }
-  
+
   @Override
   public long buildHashCode() {
     final StringBuilder buf = new StringBuilder();
@@ -268,35 +268,35 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
   @Override
   public String toString() {
     final StringBuilder buf = new StringBuilder()
-        .append("alias=")
-        .append(alias != null ? alias : "null")
-        .append(", namespace=")
-        .append(namespace)
-        .append(", metric=")
-        .append(metric)
-        .append(", tags=")
-        .append(tags)
-        .append(", aggregated_tags=")
-        .append(aggregated_tags)
-        .append(", disjoint_tags=")
-        .append(disjoint_tags)
-        .append(", uniqueIds=")
-        .append(unique_ids)
-        .append("hits=")
-        .append(hits);
+            .append("alias=")
+            .append(alias != null ? alias : "null")
+            .append(", namespace=")
+            .append(namespace)
+            .append(", metric=")
+            .append(metric)
+            .append(", tags=")
+            .append(tags)
+            .append(", aggregated_tags=")
+            .append(aggregated_tags)
+            .append(", disjoint_tags=")
+            .append(disjoint_tags)
+            .append(", uniqueIds=")
+            .append(unique_ids)
+            .append("hits=")
+            .append(hits);
     return buf.toString();
   }
-  
+
   @Override
   public TypeToken<? extends TimeSeriesId> type() {
     return Const.TS_STRING_ID;
   }
-  
+
   /** @return A new builder or the SimpleStringTimeSeriesID. */
   public static Builder newBuilder() {
     return new Builder();
   }
-  
+
   @JsonIgnoreProperties(ignoreUnknown = true)
   @JsonPOJOBuilder(buildMethodName = "build", withPrefix = "")
   public static final class Builder {
@@ -323,21 +323,21 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
       this.encoded = encoded;
       return this;
     }
-    
+
     public Builder setAlias(final String alias) {
       this.alias = alias;
       return this;
     }
-    
+
     public Builder setNamespace(final String namespace) {
       this.namespace = namespace;
       return this;
     }
-    
+
     public String namespace() {
       return namespace;
     }
-    
+
     public Builder setMetric(final String metric) {
       this.metric = metric;
       return this;
@@ -347,7 +347,7 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
       this.hits = hits;
       return this;
     }
-    
+
     public String metric() {
       return metric;
     }
@@ -362,7 +362,7 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
       this.tags = tags;
       return this;
     }
-    
+
     public Builder addTags(final String key, final String value) {
       if (tags == null) {
         tags = Maps.newHashMap();
@@ -370,16 +370,16 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
       tags.put(key, value);
       return this;
     }
-    
+
     public Map<String, String> tags() {
       return tags == null ? Collections.emptyMap() : tags;
     }
-    
+
     public Builder setAggregatedTags(final List<String> aggregated_tags) {
       this.aggregated_tags = aggregated_tags;
       return this;
     }
-    
+
     public Builder addAggregatedTag(final String tag) {
       if (aggregated_tags == null) {
         aggregated_tags = Lists.newArrayList();
@@ -387,17 +387,17 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
       aggregated_tags.add(tag);
       return this;
     }
-    
+
     public List<String> aggregatedTags() {
-      return aggregated_tags == null ? Collections.emptyList() : 
-        aggregated_tags;
+      return aggregated_tags == null ? Collections.emptyList() :
+              aggregated_tags;
     }
-    
+
     public Builder setDisjointTags(final List<String> disjoint_tags) {
       this.disjoint_tags = disjoint_tags;
       return this;
     }
-    
+
     public Builder addDisjointTag(final String tag) {
       if (disjoint_tags == null) {
         disjoint_tags = Lists.newArrayList();
@@ -405,17 +405,17 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
       disjoint_tags.add(tag);
       return this;
     }
-    
+
     public List<String> disjointTags() {
-      return disjoint_tags == null ? Collections.emptyList() : 
-        disjoint_tags;
+      return disjoint_tags == null ? Collections.emptyList() :
+              disjoint_tags;
     }
-    
+
     public Builder setUniqueId(final Set<String> unique_ids) {
       this.unique_ids = unique_ids;
       return this;
     }
-    
+
     public Builder addUniqueId(final String id) {
       if (id == null) {
         throw new IllegalArgumentException("Null unique IDs are not allowed.");
@@ -426,11 +426,11 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
       unique_ids.add(id);
       return this;
     }
-    
+
     public Set<String> uniqueIds() {
       return unique_ids == null ? Collections.emptySet() : unique_ids;
     }
-    
+
     public BaseTimeSeriesStringId build() {
       return new BaseTimeSeriesStringId(this);
     }
@@ -438,7 +438,7 @@ public class BaseTimeSeriesStringId implements TimeSeriesStringId {
 
   /** A static comparator instantiation. */
   public static final StringMapComparator STR_MAP_CMP = new StringMapComparator();
-  
+
   /**
    * A simple comparator for maps of strings.
    */

@@ -14,7 +14,7 @@ import net.opentsdb.query.QuerySinkConfig;
 import net.opentsdb.query.QuerySinkFactory;
 
 /**
- * A factory to generate the servlet sink.
+ * A factory to generate the cache sink.
  *
  * @since 3.0
  */
