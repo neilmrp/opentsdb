@@ -56,7 +56,7 @@ public abstract class BaseQueryContext implements QueryContext {
   protected List<QuerySinkConfig> sink_configs;
   
   /** The pipeline. */
-  protected LocalPipeline pipeline;
+  protected QueryPipelineContext pipeline;
   
   /** The authentication state. */
   protected AuthState auth_state;
@@ -290,12 +290,12 @@ public abstract class BaseQueryContext implements QueryContext {
    * Base builder class.
    */
   public static abstract class Builder implements QueryContextBuilder {
-    protected TSDB tsdb;
-    protected SemanticQuery query;
-    protected QueryStats stats;
-    protected List<QuerySinkConfig> sink_configs;
-    protected List<QuerySink> sinks;
-    protected AuthState auth_state;
+    public TSDB tsdb;
+    public SemanticQuery query;
+    public QueryStats stats;
+    public List<QuerySinkConfig> sink_configs;
+    public List<QuerySink> sinks;
+    public AuthState auth_state;
     
     public QueryContextBuilder setTSDB(final TSDB tsdb) {
       this.tsdb = tsdb;

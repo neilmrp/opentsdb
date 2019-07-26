@@ -142,6 +142,7 @@ public class ServletSink implements QuerySink, SerdesCallback {
 
   @Override
   public void onNext(final QueryResult next) {
+    System.out.println("ON NEXT IN SERVLET::::::::::: " + next);
     if (next.exception() != null) {
       onError(next.exception());
       return;
@@ -181,6 +182,7 @@ public class ServletSink implements QuerySink, SerdesCallback {
               + next.dataSource(), (Throwable) ignored);
         }
         try {
+          System.out.println("-------------- CLOSING RESULT: " + next);
           next.close();
         } catch (Throwable t) {
           LOG.warn("Failed to close result: "

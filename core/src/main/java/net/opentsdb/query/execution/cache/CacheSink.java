@@ -187,12 +187,9 @@ public class CacheSink implements QuerySink, SerdesCallback {
         }
 
         try {
-            // TODO: split query result into sub query result blocks
+
             // have to figure out whether to serialize by one hour or one day blocks
-
             final long blocksize = 3600;
-
-
 
             final CacheQueryResultFactory cacheSegmentFactory = context.tsdb().getRegistry()
                     .getPlugin(CacheQueryResultFactory.class, null);
@@ -201,10 +198,10 @@ public class CacheSink implements QuerySink, SerdesCallback {
             CacheQueryResult cacheSegmenter = cacheSegmentFactory.newSerializer(next, config.serdesOptions());
             List<QueryResult> segmentedResults = cacheSegmenter.segmentResult(next, blocksize);
 
-            for (int i = 0; i < segmentedResults.size(); i++) {
-                System.out.println("****Segment " + (i+1) + " ******");
-                displayQueryResult(segmentedResults.get(i), true);
-            }
+//            for (int i = 0; i < segmentedResults.size(); i++) {
+//                System.out.println("****Segment " + (i+1) + " ******");
+//                displayQueryResult(segmentedResults.get(i), true);
+//            }
 
 //             have to implement serialization
 //            for (QueryResult segment : segmentedResults) {
