@@ -14,8 +14,11 @@
 // limitations under the License.
 package net.opentsdb.query.execution.cache;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+
+import com.stumbleupon.async.Deferred;
 
 import net.opentsdb.query.QueryContext;
 import net.opentsdb.query.QueryPipelineContext;
@@ -56,6 +59,9 @@ public interface QueryCachePlugin {
       final byte[][] keys, 
       final CacheCB callback, 
       final Span upstream_span);
+  
+  public Deferred<Void> cache(final byte[] key,
+                              final Collection<QueryResult> results);
   
   /**
    * Attempts to fetch a key from the cache. If no results were found, the 

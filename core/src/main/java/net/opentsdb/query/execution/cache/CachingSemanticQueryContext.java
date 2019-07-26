@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Map.Entry;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -54,6 +55,8 @@ import net.opentsdb.query.execution.cache.QueryCachePlugin.CacheQueryResult;
 import net.opentsdb.query.filter.NamedFilter;
 import net.opentsdb.query.processor.downsample.DownsampleConfig;
 import net.opentsdb.query.processor.downsample.DownsampleFactory;
+import net.opentsdb.query.serdes.TimeSeriesCacheSerdes;
+import net.opentsdb.query.serdes.TimeSeriesCacheSerdes.CacheSerdesCallback;
 import net.opentsdb.rollup.RollupConfig;
 import net.opentsdb.stats.Span;
 import net.opentsdb.utils.Bytes;
@@ -89,6 +92,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
     int[] slices;
     int mod;
     QueryCachePlugin cache;
+    TimeSeriesCacheSerdes serdes;
     TimeSeriesCacheKeyGenerator key_gen;
     boolean tip_query;
     TSDB tsdb;
@@ -269,7 +273,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
       }
     }
     
-    class MissOrTip implements QuerySink {
+    class MissOrTip implements QuerySink, CacheSerdesCallback {
       byte[] key;
       QueryContext sub_context;
       volatile Map<String, QueryResult> map = Maps.newConcurrentMap();
@@ -281,6 +285,15 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
         if (latch.decrementAndGet() == 0) {
           System.out.println("[[[[[[[[ COMPLETE!!! ]]]]]]] RUNNING");
           run();
+          
+          // write to the cache
+          // TODO - mode
+          tsdb.getQueryThreadPool().submit(new Runnable() {
+            @Override
+            public void run() {
+              serdes.serialize(map.values(), MissOrTip.this);
+            }
+          });
         }
       }
       
@@ -310,6 +323,11 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
       public void onError(Throwable t) {
         // TODO Auto-generated method stub
         
+      }
+
+      @Override
+      public void onComplete(byte[] data) {
+        cache.cache(key, data, 0, TimeUnit.SECONDS, null);
       }
     }
     
