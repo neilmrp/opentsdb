@@ -99,7 +99,6 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
     public LocalPipeline(final QueryContext context, 
                          final List<QuerySink> direct_sinks) {
       super(context);
-      System.out.println("SINKS FROM BUILDER: " + direct_sinks);
       if (direct_sinks != null && !direct_sinks.isEmpty()) {
         sinks.addAll(direct_sinks);
       }
@@ -218,7 +217,6 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
       }
       
       if (result.results() == null) {
-        System.out.println("      MISS on CACHE IDX: " + idx);
         mot.sub_context = buildQuery(slices[idx], mot);
         mot.sub_context.initialize(local_span)
            .addCallback(new FillCB(mot.sub_context))
@@ -243,7 +241,6 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
     // MERGE AND SEND!
     public void run() {
       try {
-        System.out.println("SORTING.......");
       // sort and merge
       Map<String, QueryResult[]> sorted = Maps.newHashMap();
       for (int i = 0; i < fills.length; i++) {
@@ -258,18 +255,15 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
       }
       
       // TODO tip
-      System.out.println("SORTED....... with size: " + sorted.size());
-      
       latch.set(sorted.size());
       for (final QueryResult[] results : sorted.values()) {
         // TODO - implement
         // TODO - send in thread pool
-        System.out.println("SINKS: " + sinks);
         for (final QuerySink sink : sinks) {
           sink.onNext(new CombinedResult(results));
         }
       }
-      System.out.println("SENT........ " + sorted.size());
+      
       } catch (Throwable t) {
         t.printStackTrace();
       }
@@ -283,7 +277,6 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
       
       @Override
       public void onComplete() {
-        System.out.println("--------- COMPLETE " + latch.get());
         complete.compareAndSet(false, true);
         if (latch.decrementAndGet() == 0) {
           System.out.println("[[[[[[[[ COMPLETE!!! ]]]]]]] RUNNING");
@@ -324,6 +317,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
       List<TimeSeries> series;
       
       CombinedTimeSeries(final TimeSeries ts) {
+        System.out.println("NEW TIMESERIES: " + ts.id());
         series = Lists.newArrayList();
         series.add(ts);
       }
@@ -405,6 +399,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
           // TODO handle tip merge eventually
           for (final TimeSeries ts : results[i].timeSeries()) {
             final long hash = ts.id().buildHashCode();
+            System.out.println("      ID HASH: " + hash);
             TimeSeries combined = time_series.get(hash);
             if (combined == null) {
               combined = new CombinedTimeSeries(ts);
@@ -533,7 +528,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
         // not tip so set it.
         builder.setEnd(Integer.toString(end));
       }
-      System.out.println(JSON.serializeToString(builder.build()));
+      
       return SemanticQueryContext.newBuilder()
           .setTSDB(context.tsdb())
           .setQuery(builder.build())

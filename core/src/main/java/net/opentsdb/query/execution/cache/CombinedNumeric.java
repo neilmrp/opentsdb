@@ -15,6 +15,7 @@ public class CombinedNumeric implements TypedTimeSeriesIterator<NumericType> {
   TypedTimeSeriesIterator<NumericType> iterator;
   
   CombinedNumeric(final List<TimeSeries> series) {
+    System.out.println(" COMBINED NUMERIC WITH: " + series.size());
     this.series = series;
     iterator = (TypedTimeSeriesIterator<NumericType>) 
         series.get(idx++).iterator(NumericType.TYPE).get();

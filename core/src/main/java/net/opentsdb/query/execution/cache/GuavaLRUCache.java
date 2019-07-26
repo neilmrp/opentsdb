@@ -201,9 +201,11 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
               mts = new MockTimeSeries(BaseTimeSeriesStringId.newBuilder()
                   .setMetric("sys.if.in")
                   .addTags("host", "web02")
-                  .addTags("dc", "lga")
+                  .addTags("dc", "LGA")
                   .build());
-              MutableNumericValue v = new MutableNumericValue(new SecondTimeStamp(1564086600), 42);
+              MutableNumericValue v = new MutableNumericValue(new SecondTimeStamp(1564086600), 505055154);
+              mts.addValue(v);
+              v = new MutableNumericValue(new SecondTimeStamp(1564086660), 68134887);
               mts.addValue(v);
             }
             
@@ -215,6 +217,7 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
 
             @Override
             public Collection<TimeSeries> timeSeries() {
+              System.out.println(" ***************** WOOT ");
               return Lists.newArrayList(mts);
             }
 
