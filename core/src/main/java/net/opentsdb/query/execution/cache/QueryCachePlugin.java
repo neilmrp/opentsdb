@@ -14,7 +14,6 @@
 // limitations under the License.
 package net.opentsdb.query.execution.cache;
 
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 

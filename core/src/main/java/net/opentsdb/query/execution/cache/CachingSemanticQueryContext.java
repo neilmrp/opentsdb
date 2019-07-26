@@ -203,6 +203,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
     
     @Override
     public void onCacheResult(final CacheQueryResult result) {
+      try {
       MissOrTip mot = null;
       int idx = 0;
       for (int i = 0; i < keys.length; i++) {
@@ -217,12 +218,19 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
       }
       
       if (result.results() == null) {
+        System.out.println("      MISS on CACHE IDX: " + idx);
         mot.sub_context = buildQuery(slices[idx], mot);
         mot.sub_context.initialize(local_span)
-        .addCallback(new FillCB(mot.sub_context))
-        .addErrback(new ErrorCB());
+           .addCallback(new FillCB(mot.sub_context))
+           .addErrback(new ErrorCB());
       } else if (latch.decrementAndGet() == 0) {
+        System.out.println("---------- CACHE RESULT!!!");
         run();
+      } else {
+        System.out.println("        CACHE HIT!!!!!!!: " + idx + "   latch: " + latch.get());
+      }
+      } catch (Throwable t) {
+        t.printStackTrace();
       }
     }
 
