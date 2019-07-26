@@ -158,7 +158,7 @@ public class TestArrayMinFactory {
     agg.accumulate(new double[] { 3, Double.NaN, 5, -1 });
     assertArrayEquals(new double[] { 3, Double.NaN, 5, -1 }, agg.doubleArray(), 0.001);
   }
- 
+  
   @Test
   public void nanThenReals() throws Exception {
     ArrayMinFactory.ArrayMin agg = new ArrayMinFactory.ArrayMin(false);
