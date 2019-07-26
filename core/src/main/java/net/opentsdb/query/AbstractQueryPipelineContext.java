@@ -39,6 +39,7 @@ import net.opentsdb.core.TSDB;
 import net.opentsdb.data.PartialTimeSeries;
 import net.opentsdb.data.TimeSeriesDataSource;
 import net.opentsdb.data.TimeSeriesId;
+import net.opentsdb.query.hacluster.HACluster;
 import net.opentsdb.query.plan.DefaultQueryPlanner;
 import net.opentsdb.stats.Span;
 
@@ -182,7 +183,7 @@ public abstract class AbstractQueryPipelineContext implements
         continue;
       }
       
-      if (n instanceof TimeSeriesDataSource) {
+      if (n instanceof TimeSeriesDataSource && !(n instanceof HACluster)) {
         downstreams.add((TimeSeriesDataSource) n);
       } else {
         downstreams.addAll(downstreamSources(n));

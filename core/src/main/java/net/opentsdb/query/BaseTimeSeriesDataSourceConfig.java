@@ -48,7 +48,10 @@ import java.util.List;
  */
 @JsonInclude(Include.NON_DEFAULT)
 @JsonDeserialize(builder = BaseTimeSeriesDataSourceConfig.Builder.class)
-public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDataSourceConfig.Builder<B, C>, C extends BaseQueryNodeConfig & TimeSeriesDataSourceConfig> extends BaseQueryNodeConfig<B, C> implements TimeSeriesDataSourceConfig<B, C> {
+public abstract class BaseTimeSeriesDataSourceConfig<B extends 
+    BaseTimeSeriesDataSourceConfig.Builder<B, C>, C extends 
+        BaseQueryNodeConfig & TimeSeriesDataSourceConfig> extends 
+          BaseQueryNodeConfig<B, C> implements TimeSeriesDataSourceConfig<B, C> {
 
   /** The source provider ID. */
   private final String source_id;
@@ -56,10 +59,16 @@ public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDat
   /** An optional namespace. */
   private final String namespace;
 
+  /** An optional starting index for pagination. */
+  private final int from;
+
+  /** An optional size for pagination. */
+  private final int size;
+
   /** A list of data types to fetch. If empty, fetch all. */
   private final List<String> types;
 
-  /** A non-null metric filter used to determine the metric(s) to fetch. */
+  /** A optional metric filter used to determine the metric(s) to fetch. */
   private final MetricFilter metric;
 
   /** An optional filter ID found in the query. */
@@ -104,12 +113,11 @@ public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDat
    */
   protected BaseTimeSeriesDataSourceConfig(final Builder builder) {
     super(builder);
-    if (builder.metric == null) {
-      throw new IllegalArgumentException("Metric filter cannot be null.");
-    }
     source_id = builder.sourceId;
     types = builder.types;
     namespace = builder.namespace;
+    from = builder.from;
+    size = builder.size;
     metric = builder.metric;
     filter_id = builder.filterId;
     filter = builder.filter;
@@ -157,6 +165,16 @@ public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDat
   @Override
   public String getNamespace() {
     return namespace;
+  }
+
+  @Override
+  public int getFrom() {
+    return from;
+  }
+
+  @Override
+  public int getSize() {
+    return size;
   }
 
   @Override
@@ -268,7 +286,6 @@ public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDat
 
   }
 
-
   @Override
   public int hashCode() {
     return buildHashCode().asInt();
@@ -302,13 +319,13 @@ public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDat
       for (final String key : keys) {
         hc.putString(key, Const.UTF8_CHARSET);
       }
-      hashes.add(hc.hash());
     }
+    hashes.add(hc.hash());
 
     return Hashing.combineOrdered(hashes);
   }
 
-  public static void cloneBuilder(BaseTimeSeriesDataSourceConfig config, Builder builder) {
+  public static void cloneBuilder(TimeSeriesDataSourceConfig config, Builder builder) {
     builder
         .setSourceId(config.getSourceId())
         .setTypes(config.getTypes() != null ? Lists.newArrayList(config.getTypes()) : null)
@@ -317,6 +334,8 @@ public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDat
         .setFilterId(config.getFilterId())
         .setQueryFilter(config.getFilter())
         .setFetchLast(config.getFetchLast())
+        .setFrom(config.getFrom())
+        .setSize(config.getSize())
         .setRollupIntervals(
             config.getRollupIntervals() == null || config.getRollupIntervals().isEmpty()
                 ? null
@@ -334,7 +353,6 @@ public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDat
                 : Lists.newArrayList(config.getPushDownNodes()))
         .setTimeShiftInterval(config.getTimeShiftInterval())
         .setTimeShifts(config.timeShifts())
-        .setHasBeenSetup(config.hasBeenSetup())
         // TODO - overrides if we keep em.
         .setType(config.getType())
         .setId(config.getId());
@@ -358,29 +376,42 @@ public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDat
       builder.setNamespace(n.asText());
     }
 
-    n = node.get("metric");
-    if (n == null) {
-      throw new IllegalArgumentException("Missing the metric field.");
+    n = node.get("from");
+    if (n != null && !n.isNull()) {
+      builder.setFrom(n.asInt());
     }
-    JsonNode type_node = n.get("type");
-    if (type_node == null) {
-      throw new IllegalArgumentException("Missing the metric type field.");
-    }
-    String type = type_node.asText();
-    if (Strings.isNullOrEmpty(type)) {
-      throw new IllegalArgumentException("Metric type field cannot be null or empty.");
-    }
-    QueryFilterFactory factory = tsdb.getRegistry().getPlugin(QueryFilterFactory.class, type);
-    if (factory == null) {
-      throw new IllegalArgumentException("No query filter factory found for: " + type);
-    }
-    QueryFilter filter = factory.parse(tsdb, mapper, n);
-    if (filter == null || !(filter instanceof MetricFilter)) {
-      throw new IllegalArgumentException("Metric query filter was not "
-          + "an instanceof MetricFilter: " + filter.getClass());
-    }
-    builder.setMetric((MetricFilter) filter);
 
+    n = node.get("size");
+    if (n != null && !n.isNull()) {
+      builder.setSize(n.asInt());
+    }
+
+    JsonNode type_node;
+    String type;
+    QueryFilterFactory factory;
+    QueryFilter filter;
+    n = node.get("metric");
+    if (n != null) {
+      type_node = n.get("type");
+      if (type_node == null) {
+        throw new IllegalArgumentException("Missing the metric type field.");
+      }
+      type = type_node.asText();
+      if (Strings.isNullOrEmpty(type)) {
+        throw new IllegalArgumentException("Metric type field cannot be null or empty.");
+      }
+
+      factory = tsdb.getRegistry().getPlugin(QueryFilterFactory.class, type);
+      if (factory == null) {
+        throw new IllegalArgumentException("No query filter factory found for: " + type);
+      }
+      filter = factory.parse(tsdb, mapper, n);
+      if (filter == null || !(filter instanceof MetricFilter)) {
+        throw new IllegalArgumentException("Metric query filter was not "
+            + "an instanceof MetricFilter: " + filter.getClass());
+      }
+      builder.setMetric((MetricFilter) filter);
+    }
     n = node.get("types");
     if (n != null && !n.isNull()) {
       for (final JsonNode t : n) {
@@ -501,6 +532,10 @@ public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDat
     @JsonProperty
     protected String namespace;
     @JsonProperty
+    protected int from;
+    @JsonProperty
+    protected int size;
+    @JsonProperty
     protected MetricFilter metric;
     @JsonProperty
     protected String filterId;
@@ -557,6 +592,18 @@ public abstract class BaseTimeSeriesDataSourceConfig<B extends BaseTimeSeriesDat
     @Override
     public B setNamespace(final String namespace) {
       this.namespace = namespace;
+      return self();
+    }
+
+    @Override
+    public B setFrom(final int from) {
+      this.from = from;
+      return self();
+    }
+
+    @Override
+    public B setSize(final int size) {
+      this.size = size;
       return self();
     }
 

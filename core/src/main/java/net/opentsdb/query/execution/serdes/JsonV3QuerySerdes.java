@@ -24,6 +24,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentSkipListMap;
 
+import net.opentsdb.data.types.event.EventGroupType;
+import net.opentsdb.data.types.event.EventsGroupValue;
 import net.opentsdb.data.types.status.StatusIterator;
 import net.opentsdb.data.types.status.StatusType;
 import net.opentsdb.data.types.status.StatusValue;
@@ -51,6 +53,8 @@ import net.opentsdb.data.TimeSeriesValue;
 import net.opentsdb.data.TimeStamp;
 import net.opentsdb.data.TypedTimeSeriesIterator;
 import net.opentsdb.data.TimeStamp.Op;
+import net.opentsdb.data.types.event.EventType;
+import net.opentsdb.data.types.event.EventsValue;
 import net.opentsdb.data.types.numeric.NumericArrayType;
 import net.opentsdb.data.types.numeric.NumericLongArrayType;
 import net.opentsdb.data.types.numeric.NumericSummaryType;
@@ -80,13 +84,11 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
 
   /** The options for this serialization. */
   private final SerdesOptions options;
-
-  /** The generator. */
-  private final JsonGenerator json;
-
+  
   /** The query start and end timestamps. */
   private final TimeStamp start;
   private final TimeStamp end;
+  private final OutputStream stream;
 
   /** Whether or not we've serialized the first result set. */
   private boolean initialized;
@@ -94,6 +96,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
   /** TEMP */
   //<set ID, <ts hash, ts wrapper>>
   private Map<String, Map<Long, SeriesWrapper>> partials = Maps.newConcurrentMap();
+  private List<byte[]> serialized_results = Lists.newArrayList();
 
   /**
    * Default ctor.
@@ -113,20 +116,16 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
     }
     this.context = context;
     this.options = options;
-    try {
-      json = JSON.getFactory().createGenerator(stream);
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to instantiate a JSON "
-          + "generator", e);
-    }
+    this.stream = stream;
+    
     start = context.query().startTime();
     end = context.query().endTime();
   }
 
   // TODO - find a better way to not sync
   @Override
-  public synchronized Deferred<Object> serialize(final QueryResult result,
-                                                 final Span span) {
+  public Deferred<Object> serialize(final QueryResult result,
+                                    final Span span) {
     if (result == null) {
       throw new IllegalArgumentException("Data may not be null.");
     }
@@ -137,16 +136,15 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
       stats.incrementSerializedTimeSeriesCount(result.timeSeries().size());
     }
 
-    if (!initialized) {
-      try {
-        json.writeStartObject();
-        json.writeArrayFieldStart("results");
-      } catch (IOException e) {
-        throw new RuntimeException("Unexpected exception: " + e.getMessage(), e);
-      }
-      initialized = true;
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    JsonGenerator json;
+    try {
+      json = JSON.getFactory().createGenerator(baos);
+    } catch (IOException e1) {
+      throw new RuntimeException("Failed to instantiate a JSON "
+          + "generator", e1);
     }
-
+    
     final List<TimeSeries> series;
     final List<Deferred<TimeSeriesStringId>> deferreds;
     if (result.idType() == Const.TS_BYTE_ID) {
@@ -196,6 +194,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
           int idx = 0;
 
           boolean wasStatus = false;
+          boolean wasEvent =false;
           String namespace = null;
           if (opts.getParallelThreshold() > 0 &&
               result.timeSeries().size() > opts.getParallelThreshold()) {
@@ -240,7 +239,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
                   json,
                   null,
                   result);
-              if (!wasStatus) {
+              if (!wasStatus ) {
                 for (final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator :
                     series.iterators()) {
                   if (iterator.getType() == StatusType.TYPE) {
@@ -250,6 +249,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
                   }
                 }
               }
+
             }
           }
           // end of the data array
@@ -265,6 +265,12 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
           return Deferred.fromError(new QueryExecutionException(
               "Unexpected exception "
               + "serializing: " + result, 500, e));
+        }
+        
+        json.close();
+        final byte[] serialized = baos.toByteArray();
+        synchronized (serialized_results) {
+          serialized_results.add(serialized);
         }
         return Deferred.fromResult(null);
       }
@@ -301,13 +307,26 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
   public void serializeComplete(final Span span) {
     if (!initialized /* Only on QueryResult */ && partials.size() > 0) {
       serializePush();
+      return;
     }
 
+    JsonGenerator json;
+    try {
+      json = JSON.getFactory().createGenerator(stream);
+    } catch (IOException e1) {
+      throw new RuntimeException("Failed to instantiate a JSON "
+          + "generator", e1);
+    }
     try {
       // TODO - other bits like the query and trace data
-      if (!initialized /* Only on QueryResult */ && partials.isEmpty()) {
-        json.writeStartObject();
-        json.writeArrayFieldStart("results");
+      json.writeStartObject();
+      json.writeArrayFieldStart("results");
+      for (int i = 0; i < serialized_results.size(); i++) {
+        if (i > 0) {
+          json.writeRaw(',');
+        }
+        json.writeRaw(new String(serialized_results.get(i), Const.UTF8_CHARSET));
+        serialized_results.set(i, null);
       }
       System.out.println("before end array " + json);
 
@@ -453,6 +472,8 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
 
     boolean wrote_values = false;
     boolean was_status = false;
+    boolean was_event = false;
+    boolean was_event_group = false;
     for (final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator : series.iterators()) {
       while (iterator.hasNext()) {
         TimeSeriesValue<? extends TimeSeriesDataType> value = iterator.next();
@@ -462,6 +483,18 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
           }
           json.writeStartObject();
           writeStatus((StatusValue) value, json);
+          wrote_values = true;
+        } else if (iterator.getType() == EventType.TYPE) {
+          was_event = true;
+          json.writeStartObject();
+          json.writeObjectFieldStart("EventsType");
+          writeEvents((EventsValue) value, json);
+          json.writeEndObject();
+          wrote_values = true;
+        } else if (iterator.getType() == EventGroupType.TYPE) {
+          was_event_group = true;
+          json.writeStartObject();
+          writeEventGroup((EventsGroupValue) value, json, id);
           wrote_values = true;
         } else {
           while (value != null && value.timestamp().compare(Op.LT, start)) {
@@ -498,19 +531,25 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
 
     if (wrote_values) {
       // serialize the ID
-      if(!was_status){
+      if(!was_status && !was_event) {
         json.writeStringField("metric", id.metric());
       }
-      json.writeObjectFieldStart("tags");
-      for (final Entry<String, String> entry : id.tags().entrySet()) {
-        json.writeStringField(entry.getKey(), entry.getValue());
+      if (! was_event_group) {
+        json.writeObjectFieldStart("tags");
+        for (final Entry<String, String> entry : id.tags().entrySet()) {
+          json.writeStringField(entry.getKey(), entry.getValue());
+        }
+        json.writeEndObject();
       }
-      json.writeEndObject();
-      json.writeArrayFieldStart("aggregateTags");
-      for (final String tag : id.aggregatedTags()) {
-        json.writeString(tag);
+      if (was_event) {
+        json.writeNumberField("hits", id.hits());
+      } else {
+        json.writeArrayFieldStart("aggregateTags");
+        for (final String tag : id.aggregatedTags()) {
+          json.writeString(tag);
+        }
+        json.writeEndArray();
       }
-      json.writeEndArray();
       json.writeEndObject();
     }
 
@@ -901,6 +940,65 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
     return wrote_type;
   }
 
+  private void writeEventGroup(EventsGroupValue eventsGroupValue, final JsonGenerator json,
+      final TimeSeriesStringId id)
+      throws IOException {
+    json.writeObjectFieldStart("EventsGroupType");
+    if (eventsGroupValue.group() != null) {
+      json.writeObjectFieldStart("group");
+      for (Map.Entry<String, String> e : eventsGroupValue.group().entrySet()) {
+        json.writeStringField(e.getKey(), String.valueOf(e.getValue()));
+      }
+      json.writeEndObject();
+    }
+
+    json.writeObjectFieldStart("event");
+    writeEvents(eventsGroupValue.event(), json);
+    json.writeObjectFieldStart("tags");
+    for (final Entry<String, String> entry : id.tags().entrySet()) {
+      json.writeStringField(entry.getKey(), entry.getValue());
+    }
+    json.writeEndObject();
+    json.writeEndObject();
+
+    json.writeEndObject();
+  }
+  private void writeEvents(EventsValue eventsValue, final JsonGenerator json) throws IOException {
+    json.writeStringField("namespace", eventsValue.namespace());
+    json.writeStringField("source", eventsValue.source());
+    json.writeStringField("title", eventsValue.title());
+    json.writeStringField("message", eventsValue.message());
+    json.writeStringField("priority", eventsValue.priority());
+    json.writeStringField("timestamp", Long.toString(eventsValue.timestamp().epoch()));
+    json.writeStringField("endTimestamp", Long.toString(eventsValue.endTimestamp().epoch()));
+    json.writeStringField("userId", eventsValue.userId());
+    json.writeBooleanField("ongoing", eventsValue.ongoing());
+    json.writeStringField("eventId", eventsValue.eventId());
+    if (eventsValue.parentId() != null) {
+      json.writeArrayFieldStart("parentId");
+      for (String p : eventsValue.parentId()) {
+        json.writeString(p);
+      }
+    }
+    json.writeEndArray();
+    if (eventsValue.childId() != null) {
+      json.writeArrayFieldStart("childId");
+      for (String c : eventsValue.childId()) {
+        json.writeString(c);
+      }
+    }
+    json.writeEndArray();
+
+    if (eventsValue.additionalProps() != null) {
+      json.writeObjectFieldStart("additionalProps");
+      for (Map.Entry<String, Object> e : eventsValue.additionalProps().entrySet()) {
+        json.writeStringField(e.getKey(), String.valueOf(e.getValue()));
+      }
+      json.writeEndObject();
+    }
+
+  }
+  
   private void writeStatus(StatusValue statusValue, final JsonGenerator json) throws IOException {
 
     byte[] statusCodeArray = statusValue.statusCodeArray();
@@ -948,6 +1046,13 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
 
   void serializePush() {
     try {
+      JsonGenerator json;
+      try {
+        json = JSON.getFactory().createGenerator(stream);
+      } catch (IOException e1) {
+        throw new RuntimeException("Failed to instantiate a JSON "
+            + "generator", e1);
+      }
       json.writeStartObject();
       json.writeArrayFieldStart("results");
 

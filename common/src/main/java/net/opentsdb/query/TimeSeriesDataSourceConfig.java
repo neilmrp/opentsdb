@@ -42,7 +42,13 @@ public interface TimeSeriesDataSourceConfig<
   /** @return An optional namespace for such systems as support it. */
   public String getNamespace();
 
-  /** @return The non-null metric filter. */
+  /** @return An optional starting index for pagination. */
+  public int getFrom();
+
+  /** @return An optional size for pagination. */
+  public int getSize();
+
+  /** @return The optional metric filter. */
   public MetricFilter getMetric();
   
   /** @return An optional filter ID to fetch. */
@@ -96,7 +102,11 @@ public interface TimeSeriesDataSourceConfig<
     B addType(final String type);
     
     B setNamespace(final String namespace);
-    
+
+    B setFrom(final int from);
+
+    B setSize(final int size);
+
     B setFilterId(final String filter_id);
     
     B setQueryFilter(final QueryFilter filter);
