@@ -60,7 +60,8 @@ public interface QueryCachePlugin {
       final CacheCB callback, 
       final Span upstream_span);
   
-  public Deferred<Void> cache(final byte[] key,
+  public Deferred<Void> cache(final int timestamp,
+                              final byte[] key,
                               final Collection<QueryResult> results);
   
   /**

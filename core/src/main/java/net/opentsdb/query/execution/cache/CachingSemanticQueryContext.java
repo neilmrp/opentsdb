@@ -56,7 +56,6 @@ import net.opentsdb.query.filter.NamedFilter;
 import net.opentsdb.query.processor.downsample.DownsampleConfig;
 import net.opentsdb.query.processor.downsample.DownsampleFactory;
 import net.opentsdb.query.serdes.TimeSeriesCacheSerdes;
-import net.opentsdb.query.serdes.TimeSeriesCacheSerdes.CacheSerdesCallback;
 import net.opentsdb.rollup.RollupConfig;
 import net.opentsdb.stats.Span;
 import net.opentsdb.utils.Bytes;
@@ -92,10 +91,8 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
     int[] slices;
     int mod;
     QueryCachePlugin cache;
-    TimeSeriesCacheSerdes serdes;
     TimeSeriesCacheKeyGenerator key_gen;
     boolean tip_query;
-    TSDB tsdb;
     byte[][] keys;
     MissOrTip[] fills;
     AtomicInteger latch;
@@ -111,7 +108,10 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
     @Override
     public Deferred<Void> initialize(final Span span) {
       // TEMP --------------
-      cache = new GuavaLRUCache();
+      cache = tsdb.getRegistry().getPlugin(QueryCachePlugin.class, null);
+      if (cache == null) {
+        throw new IllegalArgumentException("No cache plugin.");
+      }
       key_gen = new DefaultTimeSeriesCacheKeyGenerator();
       
       // TODO properly find a downsample
@@ -273,7 +273,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
       }
     }
     
-    class MissOrTip implements QuerySink, CacheSerdesCallback {
+    class MissOrTip implements QuerySink {
       byte[] key;
       QueryContext sub_context;
       volatile Map<String, QueryResult> map = Maps.newConcurrentMap();
@@ -288,12 +288,14 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
           
           // write to the cache
           // TODO - mode
+          System.out.println("       TSDB: " + tsdb);
+          System.out.println("        QTP: " + tsdb.getQueryThreadPool());
           tsdb.getQueryThreadPool().submit(new Runnable() {
             @Override
             public void run() {
-              serdes.serialize(map.values(), MissOrTip.this);
+              cache.cache(0, key, map.values());
             }
-          });
+          }, CachingSemanticQueryContext.this);
         }
       }
       
@@ -324,11 +326,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
         // TODO Auto-generated method stub
         
       }
-
-      @Override
-      public void onComplete(byte[] data) {
-        cache.cache(key, data, 0, TimeUnit.SECONDS, null);
-      }
+      
     }
     
     class CombinedTimeSeries implements TimeSeries {
