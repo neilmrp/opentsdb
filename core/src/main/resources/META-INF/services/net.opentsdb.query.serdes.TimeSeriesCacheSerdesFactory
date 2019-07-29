@@ -1,1 +1,2 @@
 net.opentsdb.query.execution.cache.DummyCacheSerdes
+net.opentsdb.query.execution.serdes.JsonCacheSerdes

@@ -268,6 +268,22 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
         }
       }
       
+      for (int i = 0; i < fills.length; i++) {
+        final int x = i;
+        if (fills[i].sub_context == null) {
+          continue;
+        }
+        
+        // write to the cache
+        // TODO - mode
+        tsdb.getQueryThreadPool().submit(new Runnable() {
+          @Override
+          public void run() {
+            cache.cache(0, keys[x], fills[x].map.values());
+          }
+        }, CachingSemanticQueryContext.this);
+      }
+      
       } catch (Throwable t) {
         t.printStackTrace();
       }
@@ -285,17 +301,6 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
         if (latch.decrementAndGet() == 0) {
           System.out.println("[[[[[[[[ COMPLETE!!! ]]]]]]] RUNNING");
           run();
-          
-          // write to the cache
-          // TODO - mode
-          System.out.println("       TSDB: " + tsdb);
-          System.out.println("        QTP: " + tsdb.getQueryThreadPool());
-          tsdb.getQueryThreadPool().submit(new Runnable() {
-            @Override
-            public void run() {
-              cache.cache(0, key, map.values());
-            }
-          }, CachingSemanticQueryContext.this);
         }
       }
       

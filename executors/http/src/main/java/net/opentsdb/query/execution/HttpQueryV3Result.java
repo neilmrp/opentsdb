@@ -52,6 +52,7 @@ import net.opentsdb.data.types.numeric.NumericSummaryType;
 import net.opentsdb.data.types.numeric.NumericType;
 import net.opentsdb.query.QueryNode;
 import net.opentsdb.query.QueryResult;
+import net.opentsdb.query.execution.serdes.DummyQueryNode;
 import net.opentsdb.rollup.RollupConfig;
 import net.opentsdb.utils.DateTime;
 
@@ -69,7 +70,7 @@ import net.opentsdb.utils.DateTime;
 public class HttpQueryV3Result implements QueryResult {
 
   /** The node that owns us. */
-  private final QueryNode node;
+  private QueryNode node;
   
   /** The name of this data source. */
   private String data_source;
@@ -117,6 +118,9 @@ public class HttpQueryV3Result implements QueryResult {
     if (exception == null) {
       String temp = root.get("source").asText();
       data_source = temp.substring(temp.indexOf(":") + 1);
+      if (this.node == null) {
+        this.node = new DummyQueryNode(temp.substring(0, temp.indexOf(":")));
+      }
       
       JsonNode n = root.get("timeSpecification");
       if (n != null && !n.isNull()) {
