@@ -185,6 +185,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
 
     @Override
     public void fetchNext(final Span span) {
+      LOG.info("WARNING: USING CACHE SMQE");
       // TODO - timeless
       if (tip_query) {
         latch = new AtomicInteger(keys.length);
