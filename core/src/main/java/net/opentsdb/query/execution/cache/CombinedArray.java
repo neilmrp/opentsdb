@@ -25,7 +25,7 @@ public class CombinedArray implements TypedTimeSeriesIterator<NumericArrayType>,
     for (int i = 0; i < series.size(); i++) {
       final TypedTimeSeriesIterator<NumericArrayType> iterator = 
           (TypedTimeSeriesIterator<NumericArrayType>) 
-            series.get(idx++).iterator(NumericType.TYPE).get();
+            series.get(i).iterator(NumericArrayType.TYPE).get();
       final TimeSeriesValue<NumericArrayType> value = iterator.next();
       if (i == 0) {
         timestamp = value.timestamp().getCopy();
@@ -53,17 +53,22 @@ public class CombinedArray implements TypedTimeSeriesIterator<NumericArrayType>,
         
         if (value.value().isInteger()) {
           if (long_array == null) {
-            System.arraycopy(value.value().longArray(), value.value().offset(), double_array, idx, value.value().end());
+            for (int x = value.value().offset(); x < value.value().end(); x++) {
+              double_array[idx++] = value.value().longArray()[x];
+            }
+            //System.arraycopy(value.value().doubleArray(), value.value().offset(), double_array, idx, value.value().end());
           } else {
             System.arraycopy(value.value().longArray(), value.value().offset(), long_array, idx, value.value().end());
+            idx += value.value().end();
           }
         } else {
           System.arraycopy(value.value().doubleArray(), value.value().offset(), double_array, idx, value.value().end());
+          idx += value.value().end();
         }
-        idx += value.value().end();
       }
       series.get(i).close();
     }
+    System.out.println("DONE.........: " + idx);
   }
 
   @Override
@@ -73,6 +78,7 @@ public class CombinedArray implements TypedTimeSeriesIterator<NumericArrayType>,
 
   @Override
   public TimeSeriesValue<NumericArrayType> next() {
+    called = true;
     return this;
   }
 
@@ -88,7 +94,7 @@ public class CombinedArray implements TypedTimeSeriesIterator<NumericArrayType>,
 
   @Override
   public int end() {
-    return long_array != null ? long_array.length : double_array.length;
+    return idx;
   }
 
   @Override

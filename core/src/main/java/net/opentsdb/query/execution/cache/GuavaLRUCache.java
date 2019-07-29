@@ -184,26 +184,26 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
       final Span upstream_span) {
     int i = 0;
     for (final byte[] key : keys) {
-      System.out.println("            i: " + i);
-      if (i++ == 2) {
-        // TEMPORARY HACK
-        callback.onCacheResult(new CacheQueryResult() {
-
-          @Override
-          public byte[] key() {
-            return key;
-          }
-
-          @Override
-          public Map<String, QueryResult> results() {
-            return serdes.deserialize(null);
-          }
-          
-          
-        });
-        continue;
-      }
-      
+      System.out.println("            i: " + i++);
+//      if (i++ == 2) {
+//        // TEMPORARY HACK
+//        callback.onCacheResult(new CacheQueryResult() {
+//
+//          @Override
+//          public byte[] key() {
+//            return key;
+//          }
+//
+//          @Override
+//          public Map<String, QueryResult> results() {
+//            return serdes.deserialize(null);
+//          }
+//          
+//          
+//        });
+//        continue;
+//      }
+//      
       final ByteArrayKey cache_key = new ByteArrayKey(key);
       ExpiringValue value = cache.getIfPresent(cache_key);
       if (value != null) { 
@@ -230,6 +230,9 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
         public Map<String, QueryResult> results() {
           if (final_value == null) {
             return null;
+          }
+          if (final_value.value == null) {
+            return Collections.emptyMap();
           }
           return serdes.deserialize(final_value.value);
         }
@@ -416,7 +419,8 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
   
   @Override
   public Deferred<Void> cache(final int timestamp, final byte[] key, Collection<QueryResult> results) {
-    cache(key, serdes.serialize(results), 0, /* TODO */ TimeUnit.MILLISECONDS, null);
+    System.out.println(" [[[[[[[[ CACHING ]]]]]]: " + results);
+    cache(key, serdes.serialize(results), Integer.MAX_VALUE, /* TODO */ TimeUnit.MILLISECONDS, null);
     return Deferred.fromResult(null);
   }
   
