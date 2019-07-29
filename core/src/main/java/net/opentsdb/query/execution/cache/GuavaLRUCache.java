@@ -38,6 +38,7 @@ import com.google.common.cache.RemovalNotification;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.reflect.TypeToken;
+import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
 import io.netty.util.Timeout;
@@ -60,6 +61,8 @@ import net.opentsdb.query.QueryNode;
 import net.opentsdb.query.QueryPipelineContext;
 import net.opentsdb.query.QueryResult;
 import net.opentsdb.query.execution.QueryExecution;
+import net.opentsdb.query.serdes.TimeSeriesCacheSerdes;
+import net.opentsdb.query.serdes.TimeSeriesCacheSerdesFactory;
 import net.opentsdb.rollup.RollupConfig;
 import net.opentsdb.stats.Span;
 import net.opentsdb.stats.TsdbTrace;
@@ -106,6 +109,11 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
   public static final String TYPE = GuavaLRUCache.class.getSimpleName().toString();
   private static final Logger LOG = LoggerFactory.getLogger(GuavaLRUCache.class);
   
+  public static final String KEY_PREFIX = "tsd.cache.lru.";
+  public static final String OBJECTS_LIMIT_KEY = "limit.objects";
+  public static final String SIZE_LIMIT_KEY = "limit.size";
+  public static final String SERDES_KEY = "serdes.id";
+  
   /** The default size limit in bytes. 128MB. */
   public static final long DEFAULT_SIZE_LIMIT = 134217728;
   
@@ -130,6 +138,8 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
   /** The configured maximum number of objects. */
   private int max_objects; 
   
+  private TimeSeriesCacheSerdes serdes;
+  
   /**
    * Default ctor.
    */
@@ -143,15 +153,18 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
   @Override
   public Deferred<Object> initialize(final TSDB tsdb, final String id) {
     this.id = Strings.isNullOrEmpty(id) ? TYPE : id;
+    registerConfigs(tsdb);
     try {
-      if (tsdb.getConfig().hasProperty("tsd.executor.plugin.guava.limit.objects")) {
-        max_objects = tsdb.getConfig().getInt(
-            "tsd.executor.plugin.guava.limit.objects");
+      max_objects = tsdb.getConfig().getInt(getConfigKey(OBJECTS_LIMIT_KEY));
+      size_limit = tsdb.getConfig().getInt(getConfigKey(SIZE_LIMIT_KEY));
+      final String serdes_id = tsdb.getConfig().getString(getConfigKey(SERDES_KEY));
+      final TimeSeriesCacheSerdesFactory factory = tsdb.getRegistry().getPlugin(TimeSeriesCacheSerdesFactory.class, 
+          serdes_id);
+      if (factory == null) {
+        return Deferred.fromError(new IllegalArgumentException("No serdes factory found for " +
+            (Strings.isNullOrEmpty(serdes_id) ? "Default" : serdes_id)));
       }
-      if (tsdb.getConfig().hasProperty("tsd.executor.plugin.guava.limit.bytes")) {
-        size_limit = tsdb.getConfig().getInt(
-            "tsd.executor.plugin.guava.limit.bytes");
-      }
+      serdes = factory.getSerdes();
       cache = CacheBuilder.newBuilder()
           .maximumSize(max_objects)
           .removalListener(new Decrementer())
@@ -172,8 +185,8 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
     int i = 0;
     for (final byte[] key : keys) {
       System.out.println("            i: " + i);
-      final int x = i;
       if (i++ == 2) {
+        // TEMPORARY HACK
         callback.onCacheResult(new CacheQueryResult() {
 
           @Override
@@ -183,102 +196,28 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
 
           @Override
           public Map<String, QueryResult> results() {
-            System.out.println(" RETURNING RESULTS!!!!!!!!!! at: " + x);
-            try {
-            Map<String, QueryResult> map = Maps.newHashMap();
-            map.put("ds:m1", new RS());
-            System.out.println("         here");
-            return map;
-            } catch (Throwable t) {
-              t.printStackTrace();
-            }
-            return null;
+            return serdes.deserialize(null);
           }
           
-          class RS implements QueryResult {
-            MockTimeSeries mts;
-            RS() {
-              mts = new MockTimeSeries(BaseTimeSeriesStringId.newBuilder()
-                  .setMetric("sys.if.in")
-                  .addTags("host", "web02")
-                  .addTags("dc", "LGA")
-                  .build());
-              MutableNumericValue v = new MutableNumericValue(new SecondTimeStamp(1564086600), 505055154);
-              mts.addValue(v);
-              v = new MutableNumericValue(new SecondTimeStamp(1564086660), 68134887);
-              mts.addValue(v);
-            }
-            
-            @Override
-            public TimeSpecification timeSpecification() {
-              // TODO Auto-generated method stub
-              return null;
-            }
-
-            @Override
-            public Collection<TimeSeries> timeSeries() {
-              System.out.println(" ***************** WOOT ");
-              return Lists.newArrayList(mts);
-            }
-
-            @Override
-            public String error() {
-              // TODO Auto-generated method stub
-              return null;
-            }
-
-            @Override
-            public Throwable exception() {
-              // TODO Auto-generated method stub
-              return null;
-            }
-
-            @Override
-            public long sequenceId() {
-              // TODO Auto-generated method stub
-              return 0;
-            }
-
-            @Override
-            public QueryNode source() {
-              // TODO Auto-generated method stub
-              return null;
-            }
-
-            @Override
-            public String dataSource() {
-              // TODO Auto-generated method stub
-              return null;
-            }
-
-            @Override
-            public TypeToken<? extends TimeSeriesId> idType() {
-              // TODO Auto-generated method stub
-              return null;
-            }
-
-            @Override
-            public ChronoUnit resolution() {
-              // TODO Auto-generated method stub
-              return null;
-            }
-
-            @Override
-            public RollupConfig rollupConfig() {
-              // TODO Auto-generated method stub
-              return null;
-            }
-
-            @Override
-            public void close() {
-              // TODO Auto-generated method stub
-              
-            }
-            
-          }
+          
         });
         continue;
       }
+      
+      final ByteArrayKey cache_key = new ByteArrayKey(key);
+      ExpiringValue value = cache.getIfPresent(cache_key);
+      if (value != null) { 
+        if (value.expired()) {
+          // Note: there is a race condition here where a call to cache() can write
+          // an updated version of the same key with a newer expiration. Since this
+          // isn't a full, solid implementation of an expiring cache yet, this is
+          // a best-effort run and may invalidate new data.
+          cache.invalidate(cache_key);
+          expired.incrementAndGet();
+          value = null;
+        }
+      }
+      final ExpiringValue final_value = value;
       
       callback.onCacheResult(new CacheQueryResult() {
 
@@ -289,10 +228,14 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
 
         @Override
         public Map<String, QueryResult> results() {
-          return null; // to simulte a cache miss. Empty to simulate a negative cache hit
+          if (final_value == null) {
+            return null;
+          }
+          return serdes.deserialize(final_value.value);
         }
         
       });
+      
     }
   }
   
@@ -469,6 +412,12 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
     final LocalExecution execution = new LocalExecution();
     execution.execute();
     return execution;
+  }
+  
+  @Override
+  public Deferred<Void> cache(final int timestamp, final byte[] key, Collection<QueryResult> results) {
+    cache(key, serdes.serialize(results), 0, /* TODO */ TimeUnit.MILLISECONDS, null);
+    return Deferred.fromResult(null);
   }
   
   @Override
@@ -677,144 +626,34 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
         TimeUnit.MILLISECONDS);
   }
   
-  public class MockTimeSeries implements TimeSeries {
-
-    /** The non-null ID. */
-    protected final TimeSeriesStringId id;
-    
-    /** Whether or not we should sort when returning iterators. */
-    protected final boolean sort;
-    
-    /** Whether or not closed has been called. */
-    protected boolean closed;
-    
-    /** The map of types to lists of time series. */
-    protected Map<TypeToken<? extends TimeSeriesDataType>, 
-      List<TimeSeriesValue<?>>> data;
-    
-    /**
-     * Default ctor.
-     * @param id A non-null Id.
-     */
-    public MockTimeSeries(final TimeSeriesStringId id) {
-      this(id, false);
+  /**
+   * Helper to build the config key with a factory id.
+   *
+   * @param suffix The non-null and non-empty config suffix.
+   * @return The key containing the id.
+   */
+  @VisibleForTesting
+  String getConfigKey(final String suffix) {
+    if (id == null || id == TYPE) { // yes, same addy here.
+      return KEY_PREFIX + suffix;
+    } else {
+      return KEY_PREFIX + id + "." + suffix;
     }
-    
-    /**
-     * Alternate ctor to set sorting.
-     * @param id A non-null Id.
-     * @param sort Whether or not to sort on timestamps on the output.
-     */
-    public MockTimeSeries(final TimeSeriesStringId id, final boolean sort) {
-      this.sort = sort;
-      if (id == null) {
-        throw new IllegalArgumentException("ID cannot be null.");
-      }
-      this.id = id;
-      data = Maps.newHashMap();
-    }
-    
-    /**
-     * @param value A non-null value to add to the proper array. Must return a type.
-     */
-    public void addValue(final TimeSeriesValue<?> value) {
-      if (value == null) {
-        throw new IllegalArgumentException("Can't store null values.");
-      }
-      List<TimeSeriesValue<?>> types = data.get(value.type());
-      if (types == null) {
-        types = Lists.newArrayList();
-        data.put(value.type(), types);
-      }
-      types.add(value);
-    }
-    
-    /** Flushes the map of data but leaves the ID alone. Also resets 
-     * the closed flag. */
-    public void clear() {
-      data.clear();
-      closed = false;
-    }
-    
-    @Override
-    public TimeSeriesStringId id() {
-      return id;
-    }
-
-    @Override
-    public Optional<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> iterator(
-        final TypeToken<? extends TimeSeriesDataType> type) {
-      List<TimeSeriesValue<? extends TimeSeriesDataType>> types = data.get(type);
-      if (types == null) {
-        return Optional.empty();
-      }
-      if (sort) {
-        Collections.sort(types, new TimeSeriesValue.TimeSeriesValueComparator());
-      }
-      TypedTimeSeriesIterator<? extends TimeSeriesDataType> it = new MockTimeSeriesIterator(types.iterator(), type);
-      return Optional.of(it);
-    }
-
-    @Override
-    public Collection<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> iterators() {
-      final List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> iterators
-        = Lists.newArrayListWithCapacity(data.size());
-      for (final Entry<TypeToken<? extends TimeSeriesDataType>, 
-          List<TimeSeriesValue<?>>> entry : data.entrySet()) {
-        
-        iterators.add(new MockTimeSeriesIterator(entry.getValue().iterator(), entry.getKey()));
-      }
-      return iterators;
-    }
-
-    @Override
-    public Collection<TypeToken<? extends TimeSeriesDataType>> types() {
-      return data.keySet();
-    }
-
-    @Override
-    public void close() {
-      closed = true;
-    }
-
-    public boolean closed() {
-      return closed;
-    }
-    
-    public Map<TypeToken<? extends TimeSeriesDataType>, 
-        List<TimeSeriesValue<?>>> data() {
-      return data;
-    }
-    
-    /**
-     * Iterator over the list of values.
-     */
-    class MockTimeSeriesIterator implements TypedTimeSeriesIterator {
-      private final Iterator<TimeSeriesValue<?>> iterator;
-      private final TypeToken<? extends TimeSeriesDataType> type;
-      
-      MockTimeSeriesIterator(final Iterator<TimeSeriesValue<?>> iterator,
-                             final TypeToken<? extends TimeSeriesDataType> type) {
-        this.iterator = iterator;
-        this.type = type;
-      }
-      
-      @Override
-      public boolean hasNext() {
-        return iterator.hasNext();
-      }
-
-      @Override
-      public TimeSeriesValue<?> next() {
-        return iterator.next();
-      }
-      
-      @Override
-      public TypeToken<? extends TimeSeriesDataType> getType() {
-        return type;
-      }
-      
-    }
-    
   }
+  
+  void registerConfigs(final TSDB tsdb) {
+    if (!tsdb.getConfig().hasProperty(getConfigKey(OBJECTS_LIMIT_KEY))) {
+      tsdb.getConfig().register(getConfigKey(OBJECTS_LIMIT_KEY), 1024, false, 
+          "The maximum number of entries to have in the cache.");
+    }
+    if (!tsdb.getConfig().hasProperty(getConfigKey(SIZE_LIMIT_KEY))) {
+      tsdb.getConfig().register(getConfigKey(SIZE_LIMIT_KEY), 1024 * 16, false, 
+          "The maximum number of bytes of data to main in the cache.");
+    }
+    if (!tsdb.getConfig().hasProperty(getConfigKey(SERDES_KEY))) {
+      tsdb.getConfig().register(getConfigKey(SERDES_KEY), null, false, 
+          "The ID of a cache serdes plugin to load.");
+    }
+  }
+  
 }
