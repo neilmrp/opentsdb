@@ -184,7 +184,7 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
       final Span upstream_span) {
     int i = 0;
     for (final byte[] key : keys) {
-      System.out.println("            i: " + i);
+      System.out.println("            i: " + i++);
 //      if (i++ == 2) {
 //        // TEMPORARY HACK
 //        callback.onCacheResult(new CacheQueryResult() {
@@ -230,6 +230,9 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
         public Map<String, QueryResult> results() {
           if (final_value == null) {
             return null;
+          }
+          if (final_value.value == null) {
+            return Collections.emptyMap();
           }
           return serdes.deserialize(final_value.value);
         }

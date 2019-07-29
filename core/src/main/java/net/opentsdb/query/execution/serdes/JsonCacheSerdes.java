@@ -126,6 +126,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       }
       
       json.writeEndArray();
+      json.close();
     } catch (IOException e1) {
       throw new RuntimeException("Failed to instantiate a JSON "
           + "generator", e1);
@@ -144,7 +145,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
     
       for (final JsonNode result : results) {
         QueryResult r = new HttpQueryV3Result(null, result, null);
-        map.put(r.source().config().getOverrides() + ":" + r.dataSource(), r);
+        map.put(r.source().config().getId() + ":" + r.dataSource(), r);
       }
     } catch (IOException e) {
       // TODO Auto-generated catch block
@@ -160,13 +161,13 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       final List<String> sets,
       final QueryResult result) throws IOException {
 
-    final ByteArrayOutputStream baos;
-    if (json == null) {
-      baos = new ByteArrayOutputStream();
-      json = JSON.getFactory().createGenerator(baos);
-    } else {
-      baos = null;
-    }
+//    final ByteArrayOutputStream baos;
+//    if (json == null) {
+//      baos = new ByteArrayOutputStream();
+//      json = JSON.getFactory().createGenerator(baos);
+//    } else {
+//      baos = null;
+//    }
 
     boolean wrote_values = false;
     boolean was_status = false;
@@ -251,15 +252,15 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       json.writeEndObject();
     }
 
-    if (baos != null) {
-      json.close();
-      synchronized(sets) {
-        sets.add(new String(baos.toByteArray(), Const.UTF8_CHARSET));
-      }
-      baos.close();
-    } else {
-      json.flush();
-    }
+//    if (baos != null) {
+//      json.close();
+//      synchronized(sets) {
+//        sets.add(new String(baos.toByteArray(), Const.UTF8_CHARSET));
+//      }
+//      baos.close();
+//    } else {
+//      json.flush();
+//    }
   }
 
   private boolean writeNumeric(
@@ -699,7 +700,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
   public class HttpQueryV3Result implements QueryResult {
 
     /** The node that owns us. */
-    private final QueryNode node;
+    private QueryNode node;
     
     /** The name of this data source. */
     private String data_source;
@@ -747,6 +748,9 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       if (exception == null) {
         String temp = root.get("source").asText();
         data_source = temp.substring(temp.indexOf(":") + 1);
+        if (this.node == null) {
+          this.node = new DummyQueryNode(temp.substring(0, temp.indexOf(":")));
+        }
         
         JsonNode n = root.get("timeSpecification");
         if (n != null && !n.isNull()) {
@@ -777,7 +781,6 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       } else {
         series = Collections.emptyList();
       }
-      
     }
 
     @Override
@@ -847,16 +850,8 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       private final ZoneId time_zone;
       
       TimeSpec(final JsonNode node) {
-        long st = node.get("start").asLong();
-        long e = node.get("end").asLong();
-        if (st == HttpQueryV3Result.this.node.pipelineContext().query().startTime().epoch() &&
-            e == HttpQueryV3Result.this.node.pipelineContext().query().endTime().epoch()) {
-          start = HttpQueryV3Result.this.node.pipelineContext().query().startTime();
-          end = HttpQueryV3Result.this.node.pipelineContext().query().endTime();
-        } else {
-          start = new SecondTimeStamp(node.get("start").asLong());
-          end = new SecondTimeStamp(node.get("end").asLong());
-        }
+        start = new SecondTimeStamp(node.get("start").asLong());
+        end = new SecondTimeStamp(node.get("end").asLong());
         string_interval = node.get("interval").asText();
         if (string_interval.toLowerCase().equals("0all")) {
           interval = null;

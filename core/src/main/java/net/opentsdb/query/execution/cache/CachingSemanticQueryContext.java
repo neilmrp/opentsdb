@@ -220,7 +220,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
         }
       }
       
-      if (result.results() == null) {
+      if (mot.map == null) {
         mot.sub_context = buildQuery(slices[idx], mot);
         mot.sub_context.initialize(local_span)
            .addCallback(new FillCB(mot.sub_context))
@@ -430,6 +430,7 @@ public class CachingSemanticQueryContext extends BaseQueryContext {
             }
           }
         }
+        System.out.println("        TOTAL RESULTS: " + time_series.size());
       }
       
       @Override
