@@ -5,15 +5,15 @@ import com.stumbleupon.async.Deferred;
 import net.opentsdb.core.BaseTSDBPlugin;
 import net.opentsdb.core.TSDB;
 
-import net.opentsdb.query.CacheQueryResultFactory;
 import net.opentsdb.query.QueryResult;
+import net.opentsdb.query.QuerySegmenterFactory;
 
 /**
  * A simple factory for the protobuf serialization and caching functionality.
  *
  */
-public class PBufCacheResultFactory extends BaseTSDBPlugin implements CacheQueryResultFactory {
-    public static final String TYPE = "PBufCacheResult";
+public class PBufQuerySegmenterFactory extends BaseTSDBPlugin implements QuerySegmenterFactory {
+    public static final String TYPE = "PBufQuerySegmenterFactory";
 
     @Override
     public String type() {
@@ -27,10 +27,10 @@ public class PBufCacheResultFactory extends BaseTSDBPlugin implements CacheQuery
         return Deferred.fromResult(null);
     }
 
-    public PBufCacheResult newSerializer(final QueryResult result, final SerdesOptions options) {
+    public PBufQuerySegmenter newSerializer(final QueryResult result, final SerdesOptions options) {
         if (result == null) {
             throw new IllegalArgumentException("Query Result to be cached cannot be null.");
         }
-        return new PBufCacheResult(result, options);
+        return new PBufQuerySegmenter(result, options);
     }
 }

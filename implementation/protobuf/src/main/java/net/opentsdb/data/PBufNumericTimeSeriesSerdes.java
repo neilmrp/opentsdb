@@ -325,15 +325,6 @@ public class PBufNumericTimeSeriesSerdes implements PBufIteratorSerdes {
 
 
 
-
-
-
-
-
-
-
-
-
   /**
    * Calculates the offset from the base timestamp at the right resolution.
    * @param base A non-null base time.

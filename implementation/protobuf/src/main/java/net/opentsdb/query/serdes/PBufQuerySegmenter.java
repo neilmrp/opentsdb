@@ -14,12 +14,10 @@ import net.opentsdb.data.pbuf.NumericSegmentPB;
 import net.opentsdb.data.pbuf.NumericSummarySegmentPB;
 import net.opentsdb.data.pbuf.TimeSeriesDataSequencePB;
 import net.opentsdb.data.types.numeric.NumericSummaryType;
+import net.opentsdb.data.pbuf.QueryResultsListPB;
 import net.opentsdb.data.types.numeric.NumericType;
 import net.opentsdb.exceptions.SerdesException;
-import net.opentsdb.query.CacheQueryResult;
-import net.opentsdb.query.QueryContext;
-import net.opentsdb.query.QueryNode;
-import net.opentsdb.query.QueryResult;
+import net.opentsdb.query.*;
 import net.opentsdb.data.pbuf.TimeSeriesDataPB.TimeSeriesData;
 
 import net.opentsdb.storage.schemas.tsdb1x.NumericCodec;
@@ -37,10 +35,11 @@ import java.util.*;
  * used to cache the fetched data into blocks.
  *
  */
-public class PBufCacheResult implements CacheQueryResult {
+public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes {
 
-    private static final Logger LOG = LoggerFactory.getLogger(PBufCacheResult.class);
-    public static final String TYPE = "PBufCacheResult";
+    private static final Logger LOG = LoggerFactory.getLogger(PBufQuerySegmenter.class);
+    final PBufSerdesFactory factory = new PBufSerdesFactory();
+    public static final String TYPE = "PBufQuerySegmenter";
     private final QueryResult result;
     private final SerdesOptions options;
     private final QueryNode node;
@@ -58,7 +57,7 @@ public class PBufCacheResult implements CacheQueryResult {
 
 
     // put all of this stuff in the factory's newSerializer method
-    public PBufCacheResult(final QueryResult result, final SerdesOptions options) {
+    public PBufQuerySegmenter(final QueryResult result, final SerdesOptions options) {
         if (result == null) {
             throw new IllegalArgumentException("Query Result to be cached cannot be null.");
         }
@@ -94,9 +93,6 @@ public class PBufCacheResult implements CacheQueryResult {
         long start = node.pipelineContext().query().startTime().epoch();
         long end = node.pipelineContext().query().endTime().epoch();
 
-        // necessary variable for PBufQueryResult instantiation
-        final PBufSerdesFactory factory = new PBufSerdesFactory();
-
 
         for (long threshold = start + blocksize; threshold - blocksize <= end; threshold += blocksize) {
 
@@ -108,7 +104,6 @@ public class PBufCacheResult implements CacheQueryResult {
 
             for (List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> it : iterators) {
                 // create a TimeSeriesBuilder here, determine what ID to set
-
                 TimeSeriesPB.TimeSeries.Builder currentTsBuilder = TimeSeriesPB.TimeSeries.newBuilder();
 
                 for (TypedTimeSeriesIterator<? extends TimeSeriesDataType> curr : it) {
@@ -123,11 +118,6 @@ public class PBufCacheResult implements CacheQueryResult {
                     else if (curr.getType().equals(NumericSummaryType.TYPE)) {
                         buildIterator = new PBufNumericSummaryIterator(convertNumericSummaryType(it, curr, threshold, blocksize));
                     }
-
-                    // TODO - Implement NumericArrayType
-//                    else if (curr.getType().equals(NumericArrayType.TYPE)) {
-//                        buildIterator = new PBufNumericArrayIterator(tsdBuilder.build());
-//                    }
 
                     // add the TypedTimeSeriesIterator to current currentTsBuilder
                     if (buildIterator == null) {
@@ -150,11 +140,11 @@ public class PBufCacheResult implements CacheQueryResult {
 //                            serdes.serialize(currentTsBuilder, context, options, result, buildIterator);
 
                         }
-//                        serdes.serialize(currentTsBuilder, context, options, result, buildIterator);
+                        else {
+                            serdes.serialize(currentTsBuilder, context, options, result, buildIterator);
+                        }
                     }
-
                 }
-
 
                 // set TimeSeries ID, will have to change this
                 currentTsBuilder.setId(PBufTimeSeriesId.newBuilder(
@@ -194,6 +184,32 @@ public class PBufCacheResult implements CacheQueryResult {
             if (resultExhausted()) {
                 return results;
             }
+        }
+
+        return results;
+    }
+
+    public byte[] serialize(Collection<QueryResult> results) {
+
+        PBufSerdes serdes = new PBufSerdes(factory, context, options, new ByteArrayOutputStream());
+        QueryResultsListPB.QueryResultsList.Builder convertedResults = QueryResultsListPB.QueryResultsList.newBuilder();
+        for (QueryResult result : results) {
+            convertedResults.addResults(serdes.serializeResult(result));
+        }
+
+        return convertedResults.build().toByteArray();
+    }
+
+    public Map<String, QueryResult> deserialize(final byte[] data) {
+        Map<String, QueryResult> results = new HashMap<>();
+        try {
+            QueryResultsListPB.QueryResultsList serializedResults = QueryResultsListPB.QueryResultsList.parseFrom(data);
+            for (QueryResultPB.QueryResult res : serializedResults.getResultsList()) {
+                results.put(res.getDataSource(), new PBufQueryResult(factory, node, options, res));
+            }
+        }
+        catch (Exception e) {
+            LOG.error("Unexpected exception deserializing data to Query Results");
         }
 
         return results;

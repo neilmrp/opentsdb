@@ -6,7 +6,7 @@ import net.opentsdb.query.serdes.SerdesOptions;
 import java.util.Collection;
 import java.util.List;
 
-public interface CacheQueryResult {
+public interface QuerySegmenter {
 
     /**
      * Encodes the given iterator.
@@ -15,4 +15,5 @@ public interface CacheQueryResult {
      * @return Collection of smaller QueryResults.
      */
     public List<QueryResult> segmentResult(final QueryResult result, final long blocksize);
+
 }

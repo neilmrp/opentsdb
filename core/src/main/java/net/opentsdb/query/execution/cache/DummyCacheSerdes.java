@@ -26,9 +26,7 @@ import net.opentsdb.data.TimeSeriesValue;
 import net.opentsdb.data.TimeSpecification;
 import net.opentsdb.data.TypedTimeSeriesIterator;
 import net.opentsdb.data.types.numeric.MutableNumericValue;
-import net.opentsdb.query.QueryContext;
-import net.opentsdb.query.QueryNode;
-import net.opentsdb.query.QueryResult;
+import net.opentsdb.query.*;
 import net.opentsdb.query.serdes.TimeSeriesCacheSerdes;
 import net.opentsdb.query.serdes.TimeSeriesCacheSerdesFactory;
 import net.opentsdb.rollup.RollupConfig;
@@ -40,7 +38,11 @@ public class DummyCacheSerdes extends BaseTSDBPlugin implements TimeSeriesCacheS
   @Override
   public byte[] serialize(Collection<QueryResult> results) {
     // TODO Auto-generated method stub
+//    final QuerySegmenterFactory cacheSegmentFactory = this.tsdb.getRegistry()
+//            .getPlugin(QuerySegmenterFactory.class, null);
+//    QuerySegmenter cacheSegmenter = cacheSegmentFactory.newSerializer(next, config.serdesOptions());
     return new byte[] { 42 };
+
   }
   
   @Override
