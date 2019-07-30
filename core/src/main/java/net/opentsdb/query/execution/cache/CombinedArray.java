@@ -46,7 +46,7 @@ public class CombinedArray implements TypedTimeSeriesIterator<NumericArrayType>,
         if (long_array != null && expected >= long_array.length) {
           // TODO - grow!!
           throw new IllegalStateException("Whoops!");
-        } else if (expected >= double_array.length) {
+        } else if (double_array != null && expected >= double_array.length) {
           // TODO - grow!!
           throw new IllegalStateException("Whoops!");
         }
@@ -62,6 +62,13 @@ public class CombinedArray implements TypedTimeSeriesIterator<NumericArrayType>,
             idx += value.value().end();
           }
         } else {
+          if (double_array == null) {
+            double_array = new double[long_array.length];
+            for (int x = 0; x < idx; x++) {
+              double_array[x] = long_array[x];
+            }
+            long_array = null;
+          }
           System.arraycopy(value.value().doubleArray(), value.value().offset(), double_array, idx, value.value().end());
           idx += value.value().end();
         }

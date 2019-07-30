@@ -1,10 +1,12 @@
 package net.opentsdb.query.execution.cache;
 
 import java.util.List;
+import java.util.Optional;
 
 import com.google.common.reflect.TypeToken;
 
 import net.opentsdb.data.TimeSeries;
+import net.opentsdb.data.TimeSeriesDataType;
 import net.opentsdb.data.TimeSeriesValue;
 import net.opentsdb.data.TypedTimeSeriesIterator;
 import net.opentsdb.data.types.numeric.MutableNumericSummaryValue;
@@ -20,8 +22,11 @@ public class CombinedSummary implements TypedTimeSeriesIterator<NumericSummaryTy
     value = new MutableNumericSummaryValue();
     
     for (int i = 0; i < series.size(); i++) {
-      TypedTimeSeriesIterator<NumericSummaryType> it = (TypedTimeSeriesIterator<NumericSummaryType>)
-          series.get(i).iterator(NumericSummaryType.TYPE).get();
+      Optional<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> op = series.get(i).iterator(NumericSummaryType.TYPE);
+      if (!op.isPresent()) {
+        continue;
+      }
+      TypedTimeSeriesIterator<NumericSummaryType> it = (TypedTimeSeriesIterator<NumericSummaryType>) op.get();
       TimeSeriesValue<NumericSummaryType> val = it.next();
       if (i == 0) {
         value.reset(val);
