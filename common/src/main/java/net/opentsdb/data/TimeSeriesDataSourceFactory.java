@@ -24,7 +24,6 @@ import net.opentsdb.query.QueryNodeConfig;
 import net.opentsdb.query.QueryNodeFactory;
 import net.opentsdb.query.QueryPipelineContext;
 import net.opentsdb.query.TimeSeriesDataSourceConfig;
-import net.opentsdb.query.TimeSeriesQuery;
 import net.opentsdb.query.plan.QueryPlanner;
 import net.opentsdb.rollup.RollupConfig;
 import net.opentsdb.stats.Span;
@@ -35,7 +34,8 @@ import net.opentsdb.stats.Span;
  * 
  * @since 3.0
  */
-public interface TimeSeriesDataSourceFactory<C extends TimeSeriesDataSourceConfig, N extends TimeSeriesDataSource> extends TSDBPlugin, QueryNodeFactory<C, N> {
+public interface TimeSeriesDataSourceFactory<C extends TimeSeriesDataSourceConfig, 
+    N extends TimeSeriesDataSource> extends TSDBPlugin, QueryNodeFactory<C, N> {
 
   /**
    * The type of {@link TimeSeriesId}s returned from this store by default.
@@ -50,13 +50,13 @@ public interface TimeSeriesDataSourceFactory<C extends TimeSeriesDataSourceConfi
    * to determine if the data source handles the particular query. E.g. if
    * the source would handle the namespace or metric for the given query.
    * 
-   * @param query The non-null parent query.
+   * @param context The non-null query context.
    * @param config The non-null query that would be passed to this factory.
    * @return True if the data source supports the query (even if the results
    * may be empty) or false if the source does not support the query, e.g.
    * maybe the source doesn't handle the particular namespace or metric.
    */
-  public boolean supportsQuery(final TimeSeriesQuery query, 
+  public boolean supportsQuery(final QueryPipelineContext context, 
                                final C config);
   
   /**
