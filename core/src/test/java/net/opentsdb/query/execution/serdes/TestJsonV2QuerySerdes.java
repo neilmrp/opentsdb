@@ -60,6 +60,7 @@ import net.opentsdb.data.types.numeric.aggregators.NumericAggregatorFactory;
 import net.opentsdb.data.types.numeric.aggregators.SumFactory;
 import net.opentsdb.query.QueryContext;
 import net.opentsdb.query.QueryNode;
+import net.opentsdb.query.QueryPipelineContext;
 import net.opentsdb.query.QueryResult;
 import net.opentsdb.query.TimeSeriesQuery;
 import net.opentsdb.query.pojo.Metric;
@@ -130,6 +131,11 @@ public class TestJsonV2QuerySerdes {
     ((NumericMillisecondShard) ts2).add(1486045860000L, 0.0015);
     
     when(result.timeSeries()).thenReturn(Lists.newArrayList(ts1, ts2));
+    QueryPipelineContext ctx = mock(QueryPipelineContext.class);
+    QueryNode src = mock(QueryNode.class);
+    when(src.pipelineContext()).thenReturn(ctx);
+    when(ctx.downstream(any(QueryNode.class))).thenReturn(Lists.newArrayList());
+    when(result.source()).thenReturn(src);
     
     options = (JsonV2QuerySerdesOptions) JsonV2QuerySerdesOptions.newBuilder()
         .setId("json")
@@ -529,6 +535,42 @@ public class TestJsonV2QuerySerdes {
     assertTrue(json.contains("\"1486045800\":1"));
     assertTrue(json.contains("\"1486045860\":5"));
     assertTrue(json.contains("\"1486045800\":0.009"));
+    assertTrue(json.contains("\"1486045860\":-2.45"));
+  }
+
+  @Test
+  public void serdesArrayNoFill() throws Exception {
+    TimeSpecification spec = mock(TimeSpecification.class);
+    when(spec.start()).thenReturn(new SecondTimeStamp(1486045800));
+    when(spec.interval()).thenReturn(Duration.ofSeconds(60));
+    when(result.timeSpecification()).thenReturn(spec);
+    
+    ts1 = new NumericArrayTimeSeries(id1, new SecondTimeStamp(1486045800));
+    ((NumericArrayTimeSeries) ts1).add(1);
+    ((NumericArrayTimeSeries) ts1).add(5);
+    
+    ts2 = new NumericArrayTimeSeries(id2, new SecondTimeStamp(1486045800));
+    ((NumericArrayTimeSeries) ts2).add(Double.NaN);
+    ((NumericArrayTimeSeries) ts2).add(-2.45);
+    
+    when(result.timeSeries()).thenReturn(Lists.newArrayList(ts1, ts2));
+    
+    final ByteArrayOutputStream output = new ByteArrayOutputStream();
+    final JsonV2QuerySerdes serdes = new JsonV2QuerySerdes(context, options, output);
+    serdes.serialize(result, null);
+    output.close();
+    final String json = new String(output.toByteArray(), Const.UTF8_CHARSET);
+    assertTrue(json.contains("\"metric\":\"sys.cpu.user\""));
+    assertTrue(json.contains("\"tags\":{"));
+    assertTrue(json.contains("\"dc\":\"phx\""));
+    assertTrue(json.contains("\"host\":\"web01\""));
+    assertTrue(json.contains("\"host\":\"web02\""));
+    assertTrue(json.contains("\"aggregateTags\":[\"owner\"]"));
+    assertTrue(json.contains("\"dps\":{"));
+    
+    assertTrue(json.contains("\"1486045800\":1"));
+    assertTrue(json.contains("\"1486045860\":5"));
+    assertFalse(json.contains("\"1486045800\":\"NaN\""));
     assertTrue(json.contains("\"1486045860\":-2.45"));
   }
 }
