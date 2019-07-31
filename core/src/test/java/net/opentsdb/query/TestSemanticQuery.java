@@ -24,6 +24,7 @@ import net.opentsdb.core.MockTSDB;
 import net.opentsdb.data.TimeSeriesDataSourceFactory;
 import net.opentsdb.data.types.numeric.NumericType;
 import net.opentsdb.query.QueryFillPolicy.FillWithRealPolicy;
+import net.opentsdb.query.TimeSeriesQuery.CacheMode;
 import net.opentsdb.query.TimeSeriesQuery.LogLevel;
 import net.opentsdb.query.execution.serdes.JsonV2QuerySerdesOptions;
 import net.opentsdb.query.filter.DefaultNamedFilter;
@@ -66,6 +67,7 @@ public class TestSemanticQuery {
         .setTimeZone("America/Denver")
         .addFilter(filter)
         .setExecutionGraph(graph)
+        .setCacheMode(CacheMode.CLEAR)
         .addSerdesConfig(JsonV2QuerySerdesOptions.newBuilder()
             .addFilter("ds")
             .setId("serdes")
@@ -83,6 +85,7 @@ public class TestSemanticQuery {
     assertEquals(1, query.getExecutionGraph().size());
     assertEquals("ds", query.getSerdesConfigs().get(0).getFilter().get(0));
     assertEquals(LogLevel.ERROR, query.getLogLevel());
+    assertEquals(CacheMode.CLEAR, query.getCacheMode());
 
     try {
       SemanticQuery.newBuilder()
@@ -293,6 +296,7 @@ public class TestSemanticQuery {
         .addFilter(filter)
         .setExecutionGraph(graph)
         .setLogLevel(LogLevel.DEBUG)
+        .setCacheMode(CacheMode.WRITEONLY)
         .addSerdesConfig(JsonV2QuerySerdesOptions.newBuilder()
             .addFilter("ds")
             .setId("JsonV2QuerySerdes")
@@ -307,6 +311,7 @@ public class TestSemanticQuery {
     assertTrue(json.contains("\"filter\":\"web01\""));
     assertTrue(json.contains("\"mode\":\"SINGLE\""));
     assertTrue(json.contains("\"timezone\":\"America/Denver\""));
+    assertTrue(json.contains("\"cacheMode\":\"WRITEONLY\""));
     assertTrue(json.contains("\"logLevel\":\"DEBUG\""));
     assertTrue(json.contains("\"executionGraph\":["));
     assertTrue(json.contains("\"id\":\"m1\""));
@@ -336,6 +341,7 @@ public class TestSemanticQuery {
     assertEquals("1514768400", query.getEnd());
     assertEquals(1514768400, query.endTime().epoch());
     assertEquals("America/Denver", query.getTimezone());
+    assertEquals(CacheMode.WRITEONLY, query.getCacheMode());
     assertEquals("web01", ((TagValueLiteralOrFilter) query.getFilter("f1")).getFilter());
     assertEquals("f1", query.getFilters().get(0).getId());
     assertEquals("web01", ((TagValueLiteralOrFilter) query.getFilters().get(0).getFilter()).getFilter());
@@ -415,9 +421,7 @@ public class TestSemanticQuery {
         .build();
     assertNull(query.getFilter("f1"));
   }
-
-
-
+  
   @Test
   public void equality() throws Exception {
     NamedFilter filter = DefaultNamedFilter.newBuilder()
@@ -604,10 +608,5 @@ public class TestSemanticQuery {
 
 
   }
-
-
-
-
-
 
 }

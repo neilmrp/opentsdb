@@ -31,6 +31,15 @@ import net.opentsdb.query.serdes.SerdesOptions;
  */
 public interface TimeSeriesQuery extends Comparable<TimeSeriesQuery> {
 
+  /** A cache mode for the query. Default is normal, i.e. read and write. */
+  public static enum CacheMode {
+    NORMAL,
+    READONLY,
+    WRITEONLY,
+    BYPASS,
+    CLEAR
+  }
+  
   /** A log level for the query. */
   public static enum LogLevel {
     OFF,
@@ -86,6 +95,9 @@ public interface TimeSeriesQuery extends Comparable<TimeSeriesQuery> {
   
   /** @return A non-null log level for the query. */
   public LogLevel getLogLevel();
+  
+  /** @return The Cache mode. */
+  public CacheMode getCacheMode();
   
   /** @return True if tracing is enabled. */
   public boolean isTraceEnabled();

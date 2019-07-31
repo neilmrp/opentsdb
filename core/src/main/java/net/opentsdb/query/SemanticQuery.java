@@ -70,6 +70,9 @@ public class SemanticQuery implements TimeSeriesQuery {
   /** The execution mode of the query. */
   private QueryMode mode;
   
+  /** The cache mode. */
+  private CacheMode cache_mode;
+  
   /** The serialization options. */
   private List<SerdesOptions> serdes_options;
   
@@ -77,7 +80,8 @@ public class SemanticQuery implements TimeSeriesQuery {
   private LogLevel log_level;
   
   SemanticQuery(final Builder builder) {
-    if (Strings.isNullOrEmpty(builder.start) && Strings.isNullOrEmpty(builder.end)) {
+    if (Strings.isNullOrEmpty(builder.start) && 
+        Strings.isNullOrEmpty(builder.end)) {
       throw new IllegalArgumentException("Start time is required.");
     }
 
@@ -147,13 +151,12 @@ public class SemanticQuery implements TimeSeriesQuery {
     }
     
     mode = builder.mode;
+    cache_mode = builder.cache_mode;
     serdes_options = builder.serdes_config == null ? 
         Collections.emptyList() : builder.serdes_config;
     log_level = builder.log_level;
   }
-
-
-
+  
   @Override
   public boolean equals(final Object o) {
     if (this == o)
@@ -183,12 +186,10 @@ public class SemanticQuery implements TimeSeriesQuery {
     return true;
   }
 
-
   @Override
   public int hashCode() {
     return buildHashCode().asInt();
   }
-
 
   @Override
   /** @return A HashCode object for deterministic, non-secure hashing */
@@ -227,11 +228,7 @@ public class SemanticQuery implements TimeSeriesQuery {
 
     return Hashing.combineOrdered(hashes);
   }
-
-
-
-
-
+  
   @Override
   public String getStart() {
     return start;
@@ -293,8 +290,12 @@ public class SemanticQuery implements TimeSeriesQuery {
     // TODO Auto-generated method stub
     return 0;
   }
-
-
+  
+  @Override
+  public CacheMode getCacheMode() {
+    return cache_mode;
+  }
+  
   @Override
   public LogLevel getLogLevel() {
     return log_level;
@@ -341,6 +342,7 @@ public class SemanticQuery implements TimeSeriesQuery {
     private List<QueryNodeConfig> execution_graph;
     private List<NamedFilter> filters;
     private QueryMode mode;
+    private CacheMode cache_mode;
     private List<SerdesOptions> serdes_config;
     private LogLevel log_level = LogLevel.ERROR;
     
@@ -387,6 +389,11 @@ public class SemanticQuery implements TimeSeriesQuery {
     
     public Builder setMode(final QueryMode mode) {
       this.mode = mode;
+      return this;
+    }
+    
+    public Builder setCacheMode(final CacheMode cache_mode) {
+      this.cache_mode = cache_mode;
       return this;
     }
     
@@ -520,7 +527,7 @@ public class SemanticQuery implements TimeSeriesQuery {
     }
     
     node = root.get("mode");
-    if (node != null) {
+    if (node != null && !node.isNull()) {
       try {
         builder.setMode(JSON.getMapper().treeToValue(node, QueryMode.class));
       } catch (JsonProcessingException e) {
@@ -528,6 +535,17 @@ public class SemanticQuery implements TimeSeriesQuery {
       }
     } else {
       builder.setMode(QueryMode.SINGLE);
+    }
+    
+    node = root.get("cacheMode");
+    if (node != null && !node.isNull()) {
+      try {
+        builder.setCacheMode(JSON.getMapper().treeToValue(node, CacheMode.class));
+      } catch (JsonProcessingException e) {
+        throw new IllegalStateException("Failed to parse query", e);
+      }
+    } else {
+      builder.setCacheMode(CacheMode.NORMAL);
     }
     
     node = root.get("logLevel");
