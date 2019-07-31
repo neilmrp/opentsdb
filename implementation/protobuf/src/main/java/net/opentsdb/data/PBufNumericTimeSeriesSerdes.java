@@ -62,10 +62,9 @@ public class PBufNumericTimeSeriesSerdes implements PBufIteratorSerdes {
   @Override
   public void serialize(final Builder ts_builder, 
                         final QueryContext context,
-                        final SerdesOptions options,
                         final QueryResult result,
                         final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator) {
-    ts_builder.addData(serialize(context, options, result, iterator));
+    ts_builder.addData(serialize(context, result, iterator));
   }
 
   @Override
@@ -76,13 +75,11 @@ public class PBufNumericTimeSeriesSerdes implements PBufIteratorSerdes {
   /**
    * Encodes the given iterator.
    * @param context A non-null query context.
-   * @param options Options, ignored.
    * @param result A non-null result.
    * @param iterator A non-null iterator.
    * @return A data protobuf object.
    */
   TimeSeriesData serialize(final QueryContext context,
-                           final SerdesOptions options,
                            final QueryResult result,
                            final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator) {
     final long span;
@@ -193,24 +190,21 @@ public class PBufNumericTimeSeriesSerdes implements PBufIteratorSerdes {
 
   public void serializeGivenTimes(final Builder ts_builder,
                         final QueryContext context,
-                        final SerdesOptions options,
                         final QueryResult result,
                         final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator,
                         final TimeStampPB.TimeStamp first,
                         final TimeStampPB.TimeStamp last) {
-    ts_builder.addData(serializeGivenTimes(context, options, result, iterator, first, last));
+    ts_builder.addData(serializeGivenTimes(context, result, iterator, first, last));
   }
 
   /**
    * Encodes the given iterator.
    * @param context A non-null query context.
-   * @param options Options, ignored.
    * @param result A non-null result.
    * @param iterator A non-null iterator.
    * @return A data protobuf object.
    */
   TimeSeriesData serializeGivenTimes(final QueryContext context,
-                           final SerdesOptions options,
                            final QueryResult result,
                            final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator,
                            final TimeStampPB.TimeStamp first,

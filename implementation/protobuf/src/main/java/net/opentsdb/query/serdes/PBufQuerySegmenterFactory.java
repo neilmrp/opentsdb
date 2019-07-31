@@ -31,6 +31,7 @@ public class PBufQuerySegmenterFactory extends BaseTSDBPlugin implements QuerySe
         if (result == null) {
             throw new IllegalArgumentException("Query Result to be cached cannot be null.");
         }
-        return new PBufQuerySegmenter(result, options);
+        return new PBufQuerySegmenter();
+//        return new PBufQuerySegmenter(result, options);
     }
 }

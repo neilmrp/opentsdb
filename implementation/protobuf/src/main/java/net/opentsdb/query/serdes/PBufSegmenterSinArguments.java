@@ -35,39 +35,29 @@ import java.util.*;
  * used to cache the fetched data into blocks.
  *
  */
-public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes {
+public class PBufSegmenterSinArguments implements QuerySegmenter, TimeSeriesCacheSerdes {
 
     private static final Logger LOG = LoggerFactory.getLogger(PBufQuerySegmenter.class);
     final PBufSerdesFactory factory = new PBufSerdesFactory();
     public static final String TYPE = "PBufQuerySegmenter";
-    private final QueryResult result;
-    private final SerdesOptions options;
-    private final QueryNode node;
-    private final QueryContext context;
-
-    // store iterators so you don't have to re-iterate through the same elements
-    private List<List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>>> iterators;
-
-    // for each iterator, this stores the borderline TimeSeriesValues that we did not include in the current
-    // hour's cache block but must store for the next block, maps iterator type to timeseriesvalue
-    private List<HashMap<String, TimeSeriesValue>> borderlineValues;
-
-    // store list of original timeseries id's
-    private List<TimeSeriesId> timeseriesIDs;
 
 
-    public PBufQuerySegmenter(final QueryResult result, final SerdesOptions options) {
+
+    @Override
+    public List<QueryResult> segmentResult(final QueryResult result,
+                                           final long blocksize) {
+
         if (result == null) {
             throw new IllegalArgumentException("Query Result to be cached cannot be null.");
         }
-        this.result = result;
-        this.options = options;
-        node = result.source();
-        context = node.pipelineContext().queryContext();
 
-        iterators = new ArrayList<>();
-        borderlineValues = new ArrayList<>();
-        timeseriesIDs = new ArrayList<>();
+        // SerdesOptions options = ;
+        QueryNode node = result.source();
+        QueryContext context = node.pipelineContext().queryContext();
+
+        List<List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>>> iterators = new ArrayList<>();
+        List<HashMap<String, TimeSeriesValue>> borderlineValues = new ArrayList<>();
+        List<TimeSeriesId> timeseriesIDs = new ArrayList<>();
 
         for (TimeSeries ts : result.timeSeries()) {
             iterators.add(new ArrayList<>());
@@ -77,12 +67,7 @@ public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes
                 iterators.get(iterators.size() - 1).add(it);
             }
         }
-    }
 
-
-    @Override
-    public List<QueryResult> segmentResult(final QueryResult result,
-                                           final long blocksize) {
 
         List<QueryResult> results = new ArrayList<>();
 
@@ -110,17 +95,17 @@ public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes
                     TypedTimeSeriesIterator buildIterator = null;
                     TimeSeriesData numericData = null;
                     if (curr.getType().equals(NumericType.TYPE)) {
-                        numericData = convertNumericType(it, curr, threshold, blocksize);
+                        numericData = convertNumericType(result, context, borderlineValues, iterators, it, curr, threshold, blocksize);
                         buildIterator = new PBufNumericIterator(numericData);
                     }
                     // test convertNumericSummaryType
                     else if (curr.getType().equals(NumericSummaryType.TYPE)) {
-                        buildIterator = new PBufNumericSummaryIterator(convertNumericSummaryType(it, curr, threshold, blocksize));
+                        buildIterator = new PBufNumericSummaryIterator(convertNumericSummaryType(result, context, borderlineValues, iterators, it, curr, threshold, blocksize));
                     }
 
                     // add the TypedTimeSeriesIterator to current currentTsBuilder
                     if (buildIterator == null) {
-                        LOG.debug("Skipping serialization of unkown type: "
+                        LOG.debug("Skipping serialization of unknown type: "
                                 + curr.getType());
                     }
                     else {
@@ -139,8 +124,11 @@ public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes
 //                            serdes.serialize(currentTsBuilder, context, options, result, buildIterator);
 
                         }
-                        else {
-                            serdes.serialize(currentTsBuilder, context, result, buildIterator);
+                        if (curr.getType().equals(NumericSummaryType.TYPE)) {
+                            ((PBufNumericSummaryTimeSeriesSerdes) serdes).serializeGivenTimes(currentTsBuilder, context, result, buildIterator,
+                                    numericData.getSegments(0).getStart(), numericData.getSegments(0).getEnd());
+//                            serdes.serialize(currentTsBuilder, context, options, result, buildIterator);
+
                         }
                     }
                 }
@@ -180,7 +168,7 @@ public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes
             // convert queryresult to PBufQueryResult and add to total results list
             results.add(new PBufQueryResult(factory, node, pbufBlockBuilder.build()));
 
-            if (resultExhausted()) {
+            if (resultExhausted(borderlineValues)) {
                 return results;
             }
         }
@@ -189,6 +177,13 @@ public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes
     }
 
     public byte[] serialize(Collection<QueryResult> results) {
+        if (results.isEmpty()) {
+            return new byte[] { };
+        }
+
+        QueryNode node = results.iterator().next().source();
+        QueryContext context = node.pipelineContext().queryContext();
+
 
         PBufSerdes serdes = new PBufSerdes(factory, context, new ByteArrayOutputStream());
         QueryResultsListPB.QueryResultsList.Builder convertedResults = QueryResultsListPB.QueryResultsList.newBuilder();
@@ -224,12 +219,16 @@ public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes
      * @param blocksize Size of the cache block.
      * @return TimeSeriesData used to construct a new TypedTimeSeriesIterator.
      */
-    public TimeSeriesData convertNumericType(final List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> it,
+    public TimeSeriesData convertNumericType(final QueryResult result,
+                                             final QueryContext context,
+                                             List<HashMap<String, TimeSeriesValue>> borderlineValues,
+                                             final List<List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>>> iterators,
+                                             final List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> it,
                                              final TypedTimeSeriesIterator<? extends TimeSeriesDataType> curr,
                                              final long threshold,
                                              final long blocksize) {
 
-        final long span = calculateSpan(blocksize);
+        final long span = calculateSpan(result, blocksize);
         byte encode_on = NumericCodec.encodeOn(span, NumericCodec.LENGTH_MASK);
         // TODO - Avoid this hardcoding
         if (result.resolution().equals(ChronoUnit.MILLIS)) {
@@ -392,12 +391,16 @@ public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes
      * @param blocksize Size of the cache block.
      * @return TimeSeriesData used to construct a new TypedTimeSeriesIterator.
      */
-    public TimeSeriesData convertNumericSummaryType(final List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> it,
+    public TimeSeriesData convertNumericSummaryType(final QueryResult result,
+                                                    final QueryContext context,
+                                                    List<HashMap<String, TimeSeriesValue>> borderlineValues,
+                                                    final List<List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>>> iterators,
+                                                    final List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> it,
                                                     final TypedTimeSeriesIterator<? extends TimeSeriesDataType> curr,
                                                     final long threshold,
                                                     final long blocksize) {
 
-        final long span = calculateSpan(blocksize);
+        final long span = calculateSpan(result, blocksize);
         byte encode_on = NumericCodec.encodeOn(span, NumericCodec.LENGTH_MASK);
         // TODO - Avoid this hardcoding
         if (result.resolution().equals(ChronoUnit.MILLIS)) {
@@ -610,7 +613,7 @@ public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes
     }
 
 
-    private long calculateSpan(long blocksize) {
+    private long calculateSpan(QueryResult result, long blocksize) {
         final long span;
         switch(result.resolution()) {
             case NANOS:
@@ -631,7 +634,7 @@ public class PBufQuerySegmenter implements QuerySegmenter, TimeSeriesCacheSerdes
      * into Query Result segments.
      * @return Boolean denoting whether segmentation is complete.
      */
-    private boolean resultExhausted() {
+    private boolean resultExhausted(List<HashMap<String, TimeSeriesValue>> borderlineValues) {
         for (HashMap<String, TimeSeriesValue> timeSeries : borderlineValues) {
             for (TimeSeriesValue currentVal : timeSeries.values()) {
                 if (currentVal != null) {

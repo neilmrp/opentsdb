@@ -19,11 +19,11 @@
 
   <!-- Appender to write OpenTSDB data to a set of rotating log files -->
   <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-    <file>/Users/npalleti/work/opentsdb/yahoo_opentsdbv3/opentsdb.log</file>
+    <file>/Users/npalleti/stupidwork/opentsdb/yahoo_opentsdbv3/opentsdb.log</file>
     <append>true</append>
 
     <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
-      <fileNamePattern>/Users/npalleti/work/opentsdb/yahoo_opentsdbv3/opentsdb.log.%i</fileNamePattern>
+      <fileNamePattern>/Users/npalleti/stupidwork/opentsdb/yahoo_opentsdbv3/opentsdb.log.%i</fileNamePattern>
       <minIndex>1</minIndex>
       <maxIndex>3</maxIndex>
     </rollingPolicy>
@@ -40,11 +40,11 @@
   <!-- Appender for writing full and completed queries to a log file. To use it, make
        sure to set the "level" to "INFO" in QueryLog below. -->
   <appender name="QUERY_LOG" class="ch.qos.logback.core.rolling.RollingFileAppender">
-    <file>/Users/npalleti/work/opentsdb/yahoo_opentsdbv3/queries.log</file>
+    <file>/Users/npalleti/stupidwork/opentsdb/yahoo_opentsdbv3/queries.log</file>
     <append>true</append>
 
     <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
-        <fileNamePattern>/Users/npalleti/work/opentsdb/yahoo_opentsdbv3/queries.log.%i</fileNamePattern>
+        <fileNamePattern>/Users/npalleti/stupidwork/opentsdb/yahoo_opentsdbv3/queries.log.%i</fileNamePattern>
         <minIndex>1</minIndex>
         <maxIndex>4</maxIndex>
     </rollingPolicy>
