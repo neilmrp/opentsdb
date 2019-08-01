@@ -196,16 +196,16 @@ public class PBufSegmenterSinArguments implements QuerySegmenter, TimeSeriesCach
 
     public Map<String, QueryResult> deserialize(final byte[] data) {
         Map<String, QueryResult> results = new HashMap<>();
-        try {
-            QueryResultsListPB.QueryResultsList serializedResults = QueryResultsListPB.QueryResultsList.parseFrom(data);
-            for (QueryResultPB.QueryResult res : serializedResults.getResultsList()) {
-
-                results.put(res.getDataSource(), new PBufQueryResult(factory, node, res));
-            }
-        }
-        catch (Exception e) {
-            LOG.error("Unexpected exception deserializing data to Query Results");
-        }
+//        try {
+//            QueryResultsListPB.QueryResultsList serializedResults = QueryResultsListPB.QueryResultsList.parseFrom(data);
+//            for (QueryResultPB.QueryResult res : serializedResults.getResultsList()) {
+//
+//                results.put(res.getDataSource(), new PBufQueryResult(factory, node, res));
+//            }
+//        }
+//        catch (Exception e) {
+//            LOG.error("Unexpected exception deserializing data to Query Results");
+//        }
 
         return results;
     }
