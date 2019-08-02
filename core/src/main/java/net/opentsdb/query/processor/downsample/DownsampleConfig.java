@@ -260,7 +260,7 @@ public class DownsampleConfig extends BaseQueryNodeConfigWithInterpolators<
     return units;
   }
 
-  /**  @returnConverts the units to a 2x style parseable string. */
+  /**  @return Converts the units to a 2x style parseable string. */
   public String getInterval() {
     if (units == null) {
       return "0all";
@@ -290,6 +290,11 @@ public class DownsampleConfig extends BaseQueryNodeConfigWithInterpolators<
       default:
         throw new IllegalStateException("Unsupported units: " + units);
     }
+  }
+  
+  /** @return The original interval given to the config, may be "auto". */
+  public String getOriginalInterval() {
+    return original_interval;
   }
 
   public String getStart() { return start; }

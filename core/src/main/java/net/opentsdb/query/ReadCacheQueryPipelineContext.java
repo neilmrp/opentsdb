@@ -98,30 +98,47 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
     
     // TODO - pull this out into another shared function.
     // For now we find the highest common denominator for intervals.
-    interval_in_seconds = 3600;
+    
+    // TODO - issue: If we have a downsample of 1w, we can't query on 1 day segments
+    // so we either cache the whole shebang or we bypass the cache.
+    interval_in_seconds = 0;
     for (final QueryNodeConfig config : context.query().getExecutionGraph()) {
       final DownsampleFactory factory = context.tsdb().getRegistry()
           .getDefaultPlugin(DownsampleFactory.class);
       if (config instanceof DownsampleConfig) {
         String interval;
-        if (((DownsampleConfig) config).getInterval().toLowerCase().equals("auto")) {
+        if (((DownsampleConfig) config).getRunAll()) {
+          final long delta = context.query().endTime().epoch() - 
+              context.query().startTime().epoch();
+          // TODO - rollup config and we need to tweak the downsampler to handle
+          // this case as well where we may want to use rollup data for really bit
+          // queries.
+          if (delta >= 86400) {
+            interval = "1d";
+          } else {
+            interval = "1m";
+          }
+        } else if (((DownsampleConfig) config).getOriginalInterval()
+            .toLowerCase().equals("auto")) {
           final long delta = context.query().endTime().msEpoch() - 
               context.query().startTime().msEpoch();
           interval = DownsampleFactory.getAutoInterval(delta, factory.intervals());
+          System.out.println("       AUTO: " + interval);
         } else {
+          // normal interval
           interval = ((DownsampleConfig) config).getInterval();
         }
-        
-        int ms = (int) DateTime.parseDuration(interval) / 1000;
-        if (ms > interval_in_seconds) {
-          interval_in_seconds = ms;
-        }
+        int parsed = (int) DateTime.parseDuration(interval) / 1000;
+        System.out.println("final interval: " + interval + "  Parsed: " + parsed);
+        interval_in_seconds = parsed;
       }
     }
     
     // TODO - in the future use rollup config. For now snap to one day.
-    if (interval_in_seconds > 3600) {
+    if (interval_in_seconds >= 3600) {
       interval_in_seconds = 86400;
+    } else {
+      interval_in_seconds = 3600;
     }
     
     // TODO - validate calendaring. May need to snap differently based on timezone.
