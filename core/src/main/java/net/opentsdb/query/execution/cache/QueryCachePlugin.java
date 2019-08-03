@@ -66,6 +66,10 @@ public interface QueryCachePlugin {
                               final byte[] key,
                               final Collection<QueryResult> results);
   
+  public Deferred<Void> cache(final int[] timestamps,
+                              final byte[][] keys,
+                              final Collection<QueryResult> results);
+  
   /**
    * Attempts to fetch a key from the cache. If no results were found, the 
    * deferred should resolve to a null. Note that temporary cache exceptions

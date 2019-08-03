@@ -554,7 +554,7 @@ public class TestReadCacheQueryPipelineContext {
     assertEquals(4, ctx.latch.get());
     
     ctx.onCacheResult(buildFakeFullResult(ctx, 6, 1514787300));
-    assertEquals(4, ctx.latch.get());
+    assertEquals(3, ctx.latch.get());
     
     ctx.onCacheResult(buildFakeFullResult(ctx, 3));
     assertEquals(3, ctx.latch.get());
@@ -657,7 +657,7 @@ public class TestReadCacheQueryPipelineContext {
     assertEquals(4, ctx.latch.get());
     
     ctx.onCacheResult(buildFakeFullResult(ctx, 6, 1514786460));
-    assertEquals(4, ctx.latch.get());
+    assertEquals(3, ctx.latch.get());
     
     ctx.onCacheResult(buildFakeFullResult(ctx, 3));
     assertEquals(3, ctx.latch.get());
@@ -819,6 +819,71 @@ public class TestReadCacheQueryPipelineContext {
   }
   
   @Test
+  public void onCacheResultsGoodTwoTipsExceptionFromSubQuery() throws Exception {
+    setQuery(1514765700, 1514787300, "5m", false);
+    PowerMockito.mockStatic(DateTime.class);
+    when(DateTime.currentTimeMillis()).thenReturn(1514786520000L);
+    when(DateTime.parseDuration(anyString())).thenCallRealMethod();
+    ReadCacheQueryPipelineContext ctx = spy(new ReadCacheQueryPipelineContext(context,
+        Lists.newArrayList(sink)));
+    ctx.initialize(null).join();
+    ctx.fetchNext(null);
+    assertEquals(7, ctx.results.length);
+    
+    assertEquals(1514786520000L, ctx.current_time);
+    assertEquals(7, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 4));
+    assertEquals(6, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 0));
+    assertEquals(5, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 1));
+    assertEquals(4, ctx.latch.get());    
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 2));
+    assertEquals(3, ctx.latch.get()); 
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 3));
+    assertEquals(2, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 5)); // tip so we fire another
+    assertEquals(2, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 6, 1514786460));
+    assertEquals(2, ctx.latch.get());
+    
+    verify(sink, never()).onNext(any(QueryResult.class));
+    assertTrue(TSDB.runnables.isEmpty());
+    
+    assertTrue(((MockQueryContext) ctx.results[5].sub_context).initialized);
+    assertTrue(((MockQueryContext) ctx.results[5].sub_context).fetched);
+    
+    // one result in
+    assertTrue(((MockQueryContext) ctx.results[6].sub_context).initialized);
+    assertTrue(((MockQueryContext) ctx.results[6].sub_context).fetched);
+    ctx.results[6].onError(new UnitTestException());
+    
+    verify(sink, times(1)).onError(any(UnitTestException.class));
+    
+    assertEquals(2, ctx.latch.get()); // #5 is left
+    verify(sink, never()).onNext(any(QueryResult.class));
+    assertTrue(TSDB.runnables.isEmpty());
+    
+    // last result came in
+    ctx.results[5].onNext(mockResult("m1", "m1"));
+    ctx.results[5].onComplete();
+    
+    assertEquals(2, ctx.latch.get()); // reset to 1 as we now use it for our
+    // callback to close the results.
+    
+    verify(sink, never()).onNext(any(QueryResult.class));
+    verify(sink, times(1)).onError(any(UnitTestException.class));
+    assertTrue(TSDB.runnables.isEmpty());
+  }
+  
+  @Test
   public void onCacheResultsGoodButOneFailed() throws Exception {
     PowerMockito.mockStatic(DateTime.class);
     when(DateTime.currentTimeMillis()).thenReturn(1514851200000L);
@@ -857,6 +922,94 @@ public class TestReadCacheQueryPipelineContext {
     assertTrue(TSDB.runnables.isEmpty());
   }
   
+  @Test
+  public void onCacheResultsBelowThresholdThenRecovers() throws Exception {
+    PowerMockito.mockStatic(DateTime.class);
+    when(DateTime.currentTimeMillis()).thenReturn(1514851200000L);
+    ReadCacheQueryPipelineContext ctx = new ReadCacheQueryPipelineContext(context,
+        Lists.newArrayList(sink));
+    ctx.initialize(null).join();
+    ctx.fetchNext(null);
+    
+    assertEquals(1514851200000L, ctx.current_time);
+    assertEquals(6, ctx.latch.get());
+    
+    ctx.onCacheResult(buildCacheMiss(ctx, 4));
+    assertEquals(5, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 0));
+    assertEquals(4, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 1));
+    assertEquals(3, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 5));
+    assertEquals(2, ctx.latch.get());
+    assertNull(ctx.results[4].sub_context);
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 3));
+    assertEquals(2, ctx.latch.get());
+    verify(sink, never()).onNext(any(QueryResult.class));
+    // now we run 4
+    assertTrue(((MockQueryContext) ctx.results[4].sub_context).initialized);
+    assertTrue(((MockQueryContext) ctx.results[4].sub_context).fetched);
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 2));
+    assertEquals(1, ctx.latch.get());
+    
+    verify(sink, never()).onNext(any(QueryResult.class));
+    assertTrue(TSDB.runnables.isEmpty());
+    assertNull(ctx.sub_context);
+    
+    ctx.results[4].onNext(mockResult("m1", "m1"));
+    ctx.results[4].onComplete();
+    
+    assertEquals(1, ctx.latch.get()); // reset to 1 as we now use it for our
+    // callback to close the results.
+    
+    verify(sink, times(1)).onNext(any(QueryResult.class));
+  }
+  
+  @Test
+  public void onCacheResultsBelowThresholdAtEnd() throws Exception {
+    PowerMockito.mockStatic(DateTime.class);
+    when(DateTime.currentTimeMillis()).thenReturn(1514851200000L);
+    ReadCacheQueryPipelineContext ctx = new ReadCacheQueryPipelineContext(context,
+        Lists.newArrayList(sink));
+    ctx.initialize(null).join();
+    ctx.fetchNext(null);
+    
+    assertEquals(1514851200000L, ctx.current_time);
+    assertEquals(6, ctx.latch.get());
+    
+    ctx.onCacheResult(buildCacheMiss(ctx, 4));
+    assertEquals(5, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 0));
+    assertEquals(4, ctx.latch.get());
+    
+    ctx.onCacheResult(buildCacheMiss(ctx, 1));
+    assertEquals(3, ctx.latch.get());
+    
+    ctx.onCacheResult(buildCacheMiss(ctx, 5));
+    assertEquals(2, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 3));
+    assertEquals(1, ctx.latch.get());
+    verify(sink, never()).onNext(any(QueryResult.class));
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 2));
+    assertEquals(0, ctx.latch.get());
+    
+    verify(sink, never()).onNext(any(QueryResult.class));
+    assertTrue(TSDB.runnables.isEmpty());
+    assertTrue(((MockQueryContext) ctx.sub_context).initialized);
+    assertTrue(((MockQueryContext) ctx.sub_context).fetched);
+    
+    ((MockQueryContext) ctx.sub_context).sink.onNext(mockResult("m1", "m1"));
+    verify(sink, times(1)).onNext(any(QueryResult.class));
+  }
+  
   CacheQueryResult buildFakeFullResult(final ReadCacheQueryPipelineContext ctx,
                                        final int idx) {
     CacheQueryResult result = mock(CacheQueryResult.class);
@@ -881,6 +1034,12 @@ public class TestReadCacheQueryPipelineContext {
     return result;
   }
   
+  CacheQueryResult buildCacheMiss(final ReadCacheQueryPipelineContext ctx,
+                                  final int idx) {
+    CacheQueryResult result = mock(CacheQueryResult.class);
+    when(result.key()).thenReturn(ctx.keys[idx]);
+    return result;
+  }
   void setQuery(final int start, 
                 final int end, 
                 final String interval, 
