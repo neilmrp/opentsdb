@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.stumbleupon.async.Deferred;
 
+import net.opentsdb.data.TimeStamp;
 import net.opentsdb.query.QueryContext;
 import net.opentsdb.query.QueryPipelineContext;
 import net.opentsdb.query.QueryResult;
@@ -44,6 +45,7 @@ import net.opentsdb.stats.Span;
 public interface QueryCachePlugin {
 
   public static interface CacheQueryResult {
+    public TimeStamp lastValueTimestamp();
     public byte[] key();
     public Map<String, QueryResult> results();
   }

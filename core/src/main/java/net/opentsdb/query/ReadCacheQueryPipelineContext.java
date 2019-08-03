@@ -51,20 +51,28 @@ import net.opentsdb.stats.Span;
 import net.opentsdb.utils.Bytes;
 import net.opentsdb.utils.DateTime;
 
-public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext implements CacheCB {
-  private static final Logger LOG = LoggerFactory.getLogger(ReadCacheQueryPipelineContext.class);
+public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
+    implements CacheCB {
+  private static final Logger LOG = LoggerFactory.getLogger(
+      ReadCacheQueryPipelineContext.class);
   
   public static final String CACHE_PLUGIN_KEY = "tsd.query.cache.plugin_id";
   public static final String KEYGEN_PLUGIN_KEY = "tsd.query.cache.keygen.plugin_id";
   
+  protected final long current_time;
   protected int[] slices;
   protected int interval_in_seconds;
+  protected String string_interval;
+  protected int min_interval;
+  protected boolean skip_cache;
   protected QueryCachePlugin cache;
   protected TimeSeriesCacheKeyGenerator key_gen;
   protected boolean tip_query;
   protected byte[][] keys;
-  protected MissOrTip[] fills;
+  protected ResultOrSubQuery[] results;
   protected AtomicInteger latch;
+  protected AtomicInteger hits;
+  protected AtomicBoolean failed;
   
   ReadCacheQueryPipelineContext(final QueryContext context, 
                                 final List<QuerySink> direct_sinks) {
@@ -72,6 +80,8 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
     if (direct_sinks != null && !direct_sinks.isEmpty()) {
       sinks.addAll(direct_sinks);
     }
+    failed = new AtomicBoolean();
+    current_time = DateTime.currentTimeMillis();
   }
   
   @Override
@@ -102,22 +112,15 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
     // TODO - issue: If we have a downsample of 1w, we can't query on 1 day segments
     // so we either cache the whole shebang or we bypass the cache.
     interval_in_seconds = 0;
+    int ds_interval = Integer.MAX_VALUE;
     for (final QueryNodeConfig config : context.query().getExecutionGraph()) {
       final DownsampleFactory factory = context.tsdb().getRegistry()
           .getDefaultPlugin(DownsampleFactory.class);
       if (config instanceof DownsampleConfig) {
         String interval;
         if (((DownsampleConfig) config).getRunAll()) {
-          final long delta = context.query().endTime().epoch() - 
-              context.query().startTime().epoch();
-          // TODO - rollup config and we need to tweak the downsampler to handle
-          // this case as well where we may want to use rollup data for really bit
-          // queries.
-          if (delta >= 86400) {
-            interval = "1d";
-          } else {
-            interval = "1m";
-          }
+          skip_cache = true;
+          break;
         } else if (((DownsampleConfig) config).getOriginalInterval()
             .toLowerCase().equals("auto")) {
           final long delta = context.query().endTime().msEpoch() - 
@@ -128,17 +131,39 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
           // normal interval
           interval = ((DownsampleConfig) config).getInterval();
         }
+        
         int parsed = (int) DateTime.parseDuration(interval) / 1000;
-        System.out.println("final interval: " + interval + "  Parsed: " + parsed);
-        interval_in_seconds = parsed;
+        if (parsed < ds_interval) {
+          ds_interval = parsed;
+        }
+        System.out.println("          ds_interval: " + ds_interval + "   IN: " + interval);
+        if (parsed > interval_in_seconds) {
+          System.out.println("final interval: " + interval + "  Parsed: " + parsed);
+          interval_in_seconds = parsed;
+          string_interval = interval;
+        }
       }
     }
     
+    if (skip_cache) {
+      // don't bother doing anything else.
+      return Deferred.fromResult(null);
+    }
+    
     // TODO - in the future use rollup config. For now snap to one day.
+    // AND 
     if (interval_in_seconds >= 3600) {
       interval_in_seconds = 86400;
+      string_interval = "1d";
     } else {
       interval_in_seconds = 3600;
+      string_interval = "1h";
+    }
+    
+    if (ds_interval == Integer.MAX_VALUE) {
+      min_interval = 0;
+    } else {
+      min_interval = ds_interval;
     }
     
     // TODO - validate calendaring. May need to snap differently based on timezone.
@@ -158,12 +183,11 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
       ts += interval_in_seconds;
     }
     
-    keys = key_gen.generate(context.query().buildHashCode().asLong(), slices);
+    keys = key_gen.generate(context.query().buildHashCode().asLong(), string_interval, slices);
     if (tip_query) {
       keys = Arrays.copyOf(keys, keys.length - 1);
     }
-    fills = new MissOrTip[slices.length];
-    System.out.println("SLICES: " + Arrays.toString(slices));
+    results = new ResultOrSubQuery[slices.length];
     
     if (context.sinkConfigs() != null) {
       for (final QuerySinkConfig config : context.sinkConfigs()) {
@@ -190,112 +214,154 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
 
   @Override
   public void fetchNext(final Span span) {
-    LOG.info("WARNING: USING CACHE SMQE");
-    // TODO - timeless
-    if (tip_query) {
-      latch = new AtomicInteger(keys.length);
-    } else {
-      latch = new AtomicInteger(keys.length);
-    }
-    
+    hits = new AtomicInteger();
+    latch = new AtomicInteger(slices.length);
     cache.fetch(this, keys, this, null);
-    
-    if (tip_query) {
-      fills[fills.length - 1] = new MissOrTip();
-      fills[fills.length - 1].key = keys[keys.length - 1];
-      fills[fills.length - 1].sub_context = buildQuery(slices[slices.length - 1], fills[fills.length - 1]);
-      fills[fills.length - 1].sub_context.initialize(null)
-        .addCallback(new FillCB(fills[fills.length - 1].sub_context))
-        .addErrback(new ErrorCB());
-    }
   }
   
   @Override
   public void onCacheResult(final CacheQueryResult result) {
-    try {
-    MissOrTip mot = null;
-    int idx = 0;
-    for (int i = 0; i < keys.length; i++) {
-      if (Bytes.memcmp(keys[i], result.key()) == 0) {
-        fills[i] = new MissOrTip();
-        fills[i].key = result.key();
-        fills[i].map = result.results();
-        mot = fills[i];
-        idx = i;
-        break;
-      }
+    if (failed.get()) {
+      return;
     }
     
-    if (mot.map == null) {
-      mot.sub_context = buildQuery(slices[idx], mot);
-      mot.sub_context.initialize(null)
-         .addCallback(new FillCB(mot.sub_context))
-         .addErrback(new ErrorCB());
-    } else if (latch.decrementAndGet() == 0) {
-      System.out.println("---------- CACHE RESULT!!!");
-      run();
-    } else {
-      System.out.println("        CACHE HIT!!!!!!!: " + idx + "   latch: " + latch.get());
-    }
+    try {
+      ResultOrSubQuery ros = null;
+      int idx = 0;
+      for (int i = 0; i < keys.length; i++) {
+        if (Bytes.memcmp(keys[i], result.key()) == 0) {
+          synchronized (results) {
+            results[i] = new ResultOrSubQuery();
+            results[i].key = result.key();
+            results[i].map = result.results();
+          }
+          ros = results[i];
+          idx = i;
+          break;
+        }
+      }
+      
+      if (ros == null) {
+        onCacheError(new RuntimeException("Whoops, got a result that wasn't in "
+            + "our keys? " + Arrays.toString(result.key())));
+        return;
+      }
+      
+      if (ros.map == null) {
+        System.out.println("  UH OH No hit!");
+        // TODO - configure the threshold
+        if (okToRunMisses(hits.get())) {        
+          ros.sub_context = ros.sub_context = buildQuery(slices[idx], slices[idx] + interval_in_seconds, context, ros);
+          ros.sub_context.initialize(null)
+            .addCallback(new FillCB(ros.sub_context))
+            .addErrback(new ErrorCB());
+        }
+      } else if (latch.decrementAndGet() == 0) {
+        // all results are in! Now see if we're a tip and if so then we need to see
+        // if we need to run
+        if (requestTip(idx, result.lastValueTimestamp())) {
+          ros.map = null;
+          latch.incrementAndGet();
+          System.out.println("     TIP QUERY at final latch");
+          if (okToRunMisses(hits.get())) {
+            ros.sub_context = buildQuery(slices[idx], slices[idx] + interval_in_seconds, context, ros);
+            ros.sub_context.initialize(null)
+              .addCallback(new FillCB(ros.sub_context))
+              .addErrback(new ErrorCB());
+          }
+          return;
+        }
+        
+        // all in and all good!
+        run();
+      } else {
+        if (okToRunMisses(hits.incrementAndGet())) {
+          runCacheMissesAfterSatisfyingPercent();
+        }
+        if (requestTip(idx, result.lastValueTimestamp())) {
+          System.out.println("     TIP QUERY but not at final latch");
+          ros.map = null;
+          latch.incrementAndGet();
+          if (okToRunMisses(hits.get())) {
+            ros.sub_context = ros.sub_context = buildQuery(slices[idx], slices[idx] + interval_in_seconds, context, ros);
+            ros.sub_context.initialize(null)
+              .addCallback(new FillCB(ros.sub_context))
+              .addErrback(new ErrorCB());
+          }
+        }
+      }
     } catch (Throwable t) {
-      t.printStackTrace();
+      onCacheError(t);
     }
   }
 
   @Override
-  public void onCacheError(Throwable t) {
-    // TODO Auto-generated method stub
-    
+  public void onCacheError(final Throwable t) {
+    if (failed.compareAndSet(false, true)) {
+      LOG.warn("Failure from cache", t);
+      onError(t);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("Failure from cache after initial failure", t);
+    }
   }
   
   // MERGE AND SEND!
   public void run() {
+    System.out.println("SENDING UP!!!");
     try {
-    // sort and merge
-    Map<String, QueryResult[]> sorted = Maps.newHashMap();
-    for (int i = 0; i < fills.length; i++) {
-      for (final Entry<String, QueryResult> entry : fills[i].map.entrySet()) {
-        QueryResult[] qrs = sorted.get(entry.getKey());
-        if (qrs == null) {
-          qrs = new QueryResult[fills.length + (tip_query ? 1 : 0)];
-          sorted.put(entry.getKey(), qrs);
+      // sort and merge
+      Map<String, QueryResult[]> sorted = Maps.newHashMap();
+      for (int i = 0; i < results.length; i++) {
+        if (results[i] == null) {
+          System.out.println("null at................... " + i);
+          continue;
         }
-        qrs[i] = entry.getValue();
-      }
-    }
-    
-    // TODO tip
-    latch.set(sorted.size());
-    for (final QueryResult[] results : sorted.values()) {
-      // TODO - implement
-      // TODO - send in thread pool
-      for (final QuerySink sink : sinks) {
-        sink.onNext(new CombinedResult(results));
-      }
-    }
-    
-    for (int i = 0; i < fills.length; i++) {
-      final int x = i;
-      if (fills[i].sub_context == null) {
-        continue;
+        for (final Entry<String, QueryResult> entry : results[i].map.entrySet()) {
+          QueryResult[] qrs = sorted.get(entry.getKey());
+          if (qrs == null) {
+            qrs = new QueryResult[results.length + (tip_query ? 1 : 0)];
+            sorted.put(entry.getKey(), qrs);
+          }
+          qrs[i] = entry.getValue();
+        }
       }
       
-      // write to the cache
-      // TODO - mode
-      context.tsdb().getQueryThreadPool().submit(new Runnable() {
-        @Override
-        public void run() {
-          cache.cache(0, keys[x], fills[x].map.values());
+      latch.set(sorted.size());
+      for (final QueryResult[] results : sorted.values()) {
+        // TODO - implement
+        // TODO - send in thread pool
+        for (final QuerySink sink : sinks) {
+          sink.onNext(new CombinedResult(results));
         }
-      }, context);
-    }
+      }
+      
+      for (int i = 0; i < results.length; i++) {
+        final int x = i;
+        if (results[i].sub_context == null) {
+          continue;
+        }
+        
+        // write to the cache
+        // TODO - mode
+        context.tsdb().getQueryThreadPool().submit(new Runnable() {
+          @Override
+          public void run() {
+            cache.cache(0, keys[x], results[x].map.values());
+          }
+        }, context);
+      }
     
     } catch (Throwable t) {
       t.printStackTrace();
     }
   }
   
-  class MissOrTip implements QuerySink {
+  /** @return if we found a query we couldn't cache. */
+  public boolean skipCache() {
+    return skip_cache;
+  }
+  
+  class ResultOrSubQuery implements QuerySink {
     byte[] key;
     QueryContext sub_context;
     volatile Map<String, QueryResult> map = Maps.newConcurrentMap();
@@ -311,7 +377,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
     }
     
     @Override
-    public void onNext(QueryResult next) {
+    public void onNext(final QueryResult next) {
       final String id = next.source().config().getId() + ":" + next.dataSource();
       if (map == null) {
         synchronized (this) {
@@ -324,18 +390,17 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
       if (next instanceof ResultWrapper) {
         ((ResultWrapper) next).closeWrapperOnly();
       }
+      System.out.println(" SET IT!!!!!!!!!");
     }
     
     @Override
     public void onNext(PartialTimeSeries next, QuerySinkCallback callback) {
       // TODO Auto-generated method stub
-      
     }
     
     @Override
-    public void onError(Throwable t) {
+    public void onError(final Throwable t) {
       // TODO Auto-generated method stub
-      
     }
     
   }
@@ -548,14 +613,14 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
     
   }
 
-  QueryContext buildQuery(final int start, final QuerySink sink) {
-    SemanticQuery.Builder builder = ((SemanticQuery) context.query()).toBuilder();
+  static QueryContext buildQuery(final int start, 
+                                 final int end, 
+                                 final QueryContext context, 
+                                 final QuerySink sink) {
+    final SemanticQuery.Builder builder = ((SemanticQuery) context.query())
+        .toBuilder();
     builder.setStart(Integer.toString(start));
-    int end = start + interval_in_seconds;
-    if (end < context.query().endTime().epoch()) {
-      // not tip so set it.
-      builder.setEnd(Integer.toString(end));
-    }
+    builder.setEnd(Integer.toString(end));
     
     return SemanticQueryContext.newBuilder()
         .setTSDB(context.tsdb())
@@ -577,7 +642,44 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
     }
   }
   
-  static class FillCB implements Callback<Void, Void> {
+  void runCacheMissesAfterSatisfyingPercent() {
+    synchronized (results) {
+      for (int i = 0; i < results.length; i++) {
+        final ResultOrSubQuery ros = results[i];
+        if (ros == null) {
+          continue;
+        }
+        
+        if (ros.sub_context == null && ros.map == null) {
+          ros.sub_context = buildQuery(slices[i], slices[i] + interval_in_seconds, context, ros);
+          ros.sub_context.initialize(null)
+            .addCallback(new FillCB(ros.sub_context))
+            .addErrback(new ErrorCB());
+        }
+      }
+    }
+  }
+  
+  boolean okToRunMisses(final int hits) {
+    return hits > 0 && ((double) keys.length / (double) hits) > .60;
+  }
+  
+  boolean requestTip(final int index, final TimeStamp ts) {
+    // if the index is earlier than the final two buckets then we know we
+    // don't need to request any data as it's old enough.
+    if (index < results.length - 3) {
+      System.out.println(" IDX : " + index);
+      return false;
+    }
+    
+    System.out.println("DELTA: " + (current_time - ts.msEpoch()) + "  MIN: " + (min_interval * 1000));
+    if (current_time - ts.msEpoch() > (min_interval * 1000)) {
+      return false;
+    }
+    return true;
+  }
+  
+  class FillCB implements Callback<Void, Void> {
     final QueryContext context;
     
     FillCB(final QueryContext context) {
@@ -592,7 +694,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext 
     
   }
   
-  static class ErrorCB implements Callback<Void, Exception> {
+  class ErrorCB implements Callback<Void, Exception> {
 
     @Override
     public Void call(final Exception e) throws Exception {

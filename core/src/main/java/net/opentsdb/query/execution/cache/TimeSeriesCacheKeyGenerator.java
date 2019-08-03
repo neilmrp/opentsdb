@@ -15,7 +15,6 @@
 package net.opentsdb.query.execution.cache;
 
 import net.opentsdb.core.BaseTSDBPlugin;
-import net.opentsdb.data.TimeStamp;
 import net.opentsdb.query.pojo.TimeSeriesQuery;
 
 /**
@@ -42,11 +41,13 @@ public abstract class TimeSeriesCacheKeyGenerator extends BaseTSDBPlugin {
    * This is used for sliced queries where the same query is cut up into smaller
    * time slices.
    * @param query_hash The hash of a query.
+   * @param interval An interval for the size of the cached block.
    * @param time_ranges A non-null list of time ranges to generate keys from in
    * epoch seconds.
    * @return A non-null and non-empty array of keys.
    */
-  public abstract byte[][] generate(final long query_hash, 
+  public abstract byte[][] generate(final long query_hash,
+                                    final String interval,
                                     final int[] time_ranges);
   
   /**

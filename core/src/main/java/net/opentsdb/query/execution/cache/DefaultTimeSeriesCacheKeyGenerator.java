@@ -23,6 +23,7 @@ import com.google.common.base.Strings;
 import com.stumbleupon.async.Deferred;
 
 import net.opentsdb.configuration.ConfigurationCallback;
+import net.opentsdb.core.Const;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.data.TimeStamp;
 import net.opentsdb.query.pojo.TimeSeriesQuery;
@@ -170,6 +171,7 @@ public class DefaultTimeSeriesCacheKeyGenerator
 
   @Override
   public byte[][] generate(final long query_hash, 
+                           final String interval,
                            final int[] time_ranges) {
     if (time_ranges == null) {
       throw new IllegalArgumentException("Time ranges cannot be null.");
@@ -178,15 +180,17 @@ public class DefaultTimeSeriesCacheKeyGenerator
       throw new IllegalArgumentException("Time ranges cannot be empty.");
     }
     final byte[] hash = Bytes.fromLong(query_hash);
-    final byte[] key = new byte[hash.length + CACHE_PREFIX.length + 4];
+    final byte[] interval_bytes = interval.getBytes(Const.ASCII_CHARSET);
+    final byte[] key = new byte[CACHE_PREFIX.length + hash.length + interval.length() + 4];
     System.arraycopy(CACHE_PREFIX, 0, key, 0, CACHE_PREFIX.length);
-    System.arraycopy(hash, 0, key, CACHE_PREFIX.length, hash.length);
+    System.arraycopy(interval_bytes, 0, key, CACHE_PREFIX.length, interval_bytes.length);
+    System.arraycopy(hash, 0, key, CACHE_PREFIX.length + interval_bytes.length, hash.length);
     
     final byte[][] keys = new byte[time_ranges.length][];
     for (int i = 0; i < time_ranges.length; i++) {
       final byte[] copy = Arrays.copyOf(key, key.length);
       System.arraycopy(Bytes.fromInt(time_ranges[i]), 0, 
-          copy, hash.length + CACHE_PREFIX.length, 4);
+          copy, CACHE_PREFIX.length + interval_bytes.length + hash.length, 4);
       keys[i] = copy;
     }
     return keys;

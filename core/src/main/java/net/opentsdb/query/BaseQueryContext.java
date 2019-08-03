@@ -27,6 +27,7 @@ import net.opentsdb.auth.AuthState;
 import net.opentsdb.common.Const;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.data.TimeSeriesId;
+import net.opentsdb.query.TimeSeriesQuery.CacheMode;
 import net.opentsdb.query.TimeSeriesQuery.LogLevel;
 import net.opentsdb.query.filter.NamedFilter;
 import net.opentsdb.stats.QueryStats;
@@ -64,6 +65,8 @@ public abstract class BaseQueryContext implements QueryContext {
   /** Our logs. */
   protected List<String> logs;
   
+  protected List<QuerySink> builder_sinks;
+  
   /** A local span for tracing. */
   protected Span local_span;
   
@@ -81,7 +84,7 @@ public abstract class BaseQueryContext implements QueryContext {
     if (stats != null) {
       stats.setQueryContext(this);
     }
-
+    builder_sinks = builder.sinks;
   }
   
   @Override
@@ -146,8 +149,26 @@ public abstract class BaseQueryContext implements QueryContext {
     
     class FilterCB implements Callback<Deferred<Void>, Void> {
       @Override
-      public Deferred<Void> call(Void arg) throws Exception {
-        return pipeline.initialize(local_span);
+      public Deferred<Void> call(final Void ignored) throws Exception {
+        if (query.getCacheMode() == CacheMode.BYPASS) {
+          pipeline = new LocalPipeline(BaseQueryContext.this, builder_sinks);
+          return pipeline.initialize(local_span);
+        }
+        
+        class CacheInitCB implements Callback<Deferred<Void>, Void> {
+          @Override
+          public Deferred<Void> call(final Void ignored) throws Exception {
+            if (((ReadCacheQueryPipelineContext) pipeline).skipCache()) {
+              pipeline = new LocalPipeline(BaseQueryContext.this, builder_sinks);
+              return pipeline.initialize(local_span);
+            }
+            return Deferred.fromResult(null);
+          }
+        }
+        pipeline = new ReadCacheQueryPipelineContext(
+            BaseQueryContext.this, builder_sinks);
+        return pipeline.initialize(local_span)
+            .addCallbackDeferring(new CacheInitCB());
       }
     }
     
