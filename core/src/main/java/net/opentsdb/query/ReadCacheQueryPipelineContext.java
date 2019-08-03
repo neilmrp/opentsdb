@@ -35,6 +35,7 @@ import net.opentsdb.data.types.numeric.NumericArrayType;
 import net.opentsdb.data.types.numeric.NumericSummaryType;
 import net.opentsdb.data.types.numeric.NumericType;
 import net.opentsdb.query.AbstractQueryPipelineContext.ResultWrapper;
+import net.opentsdb.query.TimeSeriesQuery.CacheMode;
 import net.opentsdb.query.execution.cache.CachingSemanticQueryContext;
 import net.opentsdb.query.execution.cache.CombinedArray;
 import net.opentsdb.query.execution.cache.CombinedNumeric;
@@ -385,17 +386,20 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
         }
         
         // write to the cache
-        // TODO - mode
-        context.tsdb().getQueryThreadPool().submit(new Runnable() {
-          @Override
-          public void run() {
-            cache.cache(0, keys[x], results[x].map.values());
-          }
-        }, context);
+        if (context.query().getCacheMode() == CacheMode.NORMAL ||
+            context.query().getCacheMode() == CacheMode.WRITEONLY) {
+          context.tsdb().getQueryThreadPool().submit(new Runnable() {
+            @Override
+            public void run() {
+              cache.cache(0, keys[x], results[x].map.values());
+            }
+          }, context);
+        }
       }
     
     } catch (Throwable t) {
-      t.printStackTrace();
+      LOG.error("Failed to process results", t);
+      onError(t);
     }
   }
   
@@ -597,21 +601,23 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
       }
       
       // write to the cache
-      // TODO - mode
-      context.tsdb().getQueryThreadPool().submit(new Runnable() {
-        @Override
-        public void run() {
-          try {
-            cache.cache(slices, keys, sub_results);
-          } catch (Throwable t) {
-            LOG.error("Failed to cache the data", t);
-          } finally {
-            for (int i = 0; i < sub_results.size(); i++) {
-              sub_results.get(i).close();
+      if (context.query().getCacheMode() == CacheMode.NORMAL ||
+          context.query().getCacheMode() == CacheMode.WRITEONLY) {
+        context.tsdb().getQueryThreadPool().submit(new Runnable() {
+          @Override
+          public void run() {
+            try {
+              cache.cache(slices, keys, sub_results);
+            } catch (Throwable t) {
+              LOG.error("Failed to cache the data", t);
+            } finally {
+              for (int i = 0; i < sub_results.size(); i++) {
+                sub_results.get(i).close();
+              }
             }
           }
-        }
-      }, context);
+        }, context);
+      }
     }
     
     @Override
