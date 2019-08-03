@@ -38,6 +38,7 @@ import net.opentsdb.query.AbstractQueryPipelineContext.ResultWrapper;
 import net.opentsdb.query.execution.cache.CachingSemanticQueryContext;
 import net.opentsdb.query.execution.cache.CombinedArray;
 import net.opentsdb.query.execution.cache.CombinedNumeric;
+import net.opentsdb.query.execution.cache.CombinedResult;
 import net.opentsdb.query.execution.cache.CombinedSummary;
 import net.opentsdb.query.execution.cache.DefaultTimeSeriesCacheKeyGenerator;
 import net.opentsdb.query.execution.cache.QueryCachePlugin;
@@ -295,7 +296,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
         
         // all cache are in, see if we should send up or if we need to fire
         // sub queries.
-        run();
+        processResults();
       }
     } catch (Throwable t) {
       onCacheError(t);
@@ -312,8 +313,18 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
     }
   }
   
-  // MERGE AND SEND!
-  public void run() {
+  @Override
+  public void close() {
+    cleanup();
+    try {
+      super.close();
+    } catch (Throwable t) {
+      LOG.warn("failed to close super", t);
+    }
+  }
+  
+  void processResults() {
+    System.out.println("----------- PROCESSING");
     if (hits.get() < keys.length) {
       for (int i = 0; i < results.length; i++) {
         if (!results[i].complete.get()) {
@@ -331,6 +342,9 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
             sub_context.initialize(null)
                 .addCallback(new SubQueryCB(sub_context))
                 .addErrback(new ErrorCB());
+            
+            // while that's running, release the old resources
+            cleanup();
           }
           return;
         }
@@ -360,7 +374,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
         // TODO - implement
         // TODO - send in thread pool
         for (final QuerySink sink : sinks) {
-          sink.onNext(new CombinedResult(results));
+          sink.onNext(new CombinedResult(results, sinks, latch));
         }
       }
       
@@ -405,7 +419,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
       complete.compareAndSet(false, true);
       if (latch.decrementAndGet() == 0) {
         System.out.println("[[[[[[[[ COMPLETE!!! ]]]]]]] RUNNING");
-        run();
+        processResults();
       }
     }
     
@@ -449,214 +463,6 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
     
   }
   
-  class CombinedTimeSeries implements TimeSeries {
-    List<TimeSeries> series;
-    
-    CombinedTimeSeries(final TimeSeries ts) {
-      System.out.println("NEW TIMESERIES: " + ts.id());
-      series = Lists.newArrayList();
-      series.add(ts);
-    }
-    
-    @Override
-    public TimeSeriesId id() {
-      return series.get(0).id();
-    }
-
-    @Override
-    public Optional<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> iterator(
-        TypeToken<? extends TimeSeriesDataType> type) {
-      if (series.get(0).types().contains(type)) {
-//        if (type == NumericType.TYPE) {
-//          return Optional.of(new CombinedNumeric(series));
-//        } else if (type == NumericArrayType.TYPE) {
-//          return Optional.of(new CombinedArray(series));
-//        } else if (type == NumericSummaryType.TYPE) {
-//          return Optional.of(new CombinedSummary(series));
-//        }
-      }
-      return Optional.empty();
-    }
-
-    @Override
-    public Collection<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> iterators() {
-      List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> iterators =
-          Lists.newArrayList();
-      TypeToken<? extends TimeSeriesDataType> type = series.get(0).types().iterator().next();
-//      if (type == NumericType.TYPE) {
-//        iterators.add(new CombinedNumeric(series));
-//      } else if (type == NumericArrayType.TYPE) {
-//        iterators.add(new CombinedArray(series));
-//      } else if (type == NumericSummaryType.TYPE) {
-//        iterators.add(new CombinedSummary(series));
-//      }
-      return iterators;
-    }
-
-    @Override
-    public Collection<TypeToken<? extends TimeSeriesDataType>> types() {
-      return series.get(0).types();
-    }
-
-    @Override
-    public void close() {
-//      for (final TimeSeries ts : series) {
-//        ts.close();
-//      }
-    }
-    
-  }
-  
-  class CombinedResult implements QueryResult, TimeSpecification {
-
-    Map<Long, TimeSeries> time_series;
-    TimeStamp spec_start;
-    TimeSpecification spec;
-    QueryNode node;
-    String data_source;
-    
-    CombinedResult(final QueryResult[] results) {
-      time_series = Maps.newHashMap();
-      for (int i = 0; i < results.length; i++) {
-        if (results[i] == null) {
-          continue;
-        }
-        
-        if (spec_start == null && results[i].timeSpecification() != null) {
-          spec_start = results[i].timeSpecification().start();
-        }
-        
-        node = results[i].source();
-        data_source = results[i].dataSource();
-        
-        // TODO more time spec
-        spec = results[i].timeSpecification();
-        
-        // TODO handle tip merge eventually
-        for (final TimeSeries ts : results[i].timeSeries()) {
-          final long hash = ts.id().buildHashCode();
-          System.out.println("      ID HASH: " + hash);
-          TimeSeries combined = time_series.get(hash);
-          if (combined == null) {
-            combined = new CombinedTimeSeries(ts);
-            time_series.put(hash, combined);
-          } else {
-            ((CombinedTimeSeries) combined).series.add(ts);
-          }
-        }
-      }
-      System.out.println("        TOTAL RESULTS: " + time_series.size());
-    }
-    
-    @Override
-    public TimeSpecification timeSpecification() {
-      return spec_start == null ? null : this;
-    }
-
-    @Override
-    public Collection<TimeSeries> timeSeries() {
-      return time_series.values();
-    }
-
-    @Override
-    public String error() {
-      // TODO Auto-generated method stub
-      return null;
-    }
-
-    @Override
-    public Throwable exception() {
-      // TODO Auto-generated method stub
-      return null;
-    }
-
-    @Override
-    public long sequenceId() {
-      // TODO Auto-generated method stub
-      return 0;
-    }
-
-    @Override
-    public QueryNode source() {
-      return node;
-    }
-
-    @Override
-    public String dataSource() {
-      return data_source;
-    }
-
-    @Override
-    public TypeToken<? extends TimeSeriesId> idType() {
-      return Const.TS_STRING_ID;
-    }
-
-    @Override
-    public ChronoUnit resolution() {
-      return ChronoUnit.SECONDS;
-    }
-
-    @Override
-    public RollupConfig rollupConfig() {
-      // TODO Auto-generated method stub
-      return null;
-    }
-
-    @Override
-    public void close() {
-      System.out.println("-------- CLOSING");
-      if (latch.decrementAndGet() == 0) {
-        for (final QuerySink sink : sinks) {
-          sink.onComplete();
-        }
-      }
-//      for (final TimeSeries ts : time_series.values()) {
-//        ts.close();
-//      }
-    }
-
-    @Override
-    public TimeStamp start() {
-      return spec_start;
-    }
-
-    @Override
-    public TimeStamp end() {
-      return spec.end();
-    }
-
-    @Override
-    public TemporalAmount interval() {
-      return spec.interval();
-    }
-
-    @Override
-    public String stringInterval() {
-      return spec.stringInterval();
-    }
-
-    @Override
-    public ChronoUnit units() {
-      return spec.units();
-    }
-
-    @Override
-    public ZoneId timezone() {
-      return spec.timezone();
-    }
-
-    @Override
-    public void updateTimestamp(int offset, TimeStamp timestamp) {
-      spec.updateTimestamp(offset, timestamp);
-    }
-
-    @Override
-    public void nextTimestamp(TimeStamp timestamp) {
-      spec.nextTimestamp(timestamp);
-    }
-    
-  }
-
   static QueryContext buildQuery(final int start, 
                                  final int end, 
                                  final QueryContext context, 
@@ -687,7 +493,6 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
   }
   
   void runCacheMissesAfterSatisfyingPercent() {
-    System.out.println(" --------- RUNNING OTHERS");
     synchronized (results) {
       for (int i = 0; i < results.length; i++) {
         final ResultOrSubQuery ros = results[i];
@@ -697,7 +502,6 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
         
         if (ros.sub_context == null && 
             (ros.map == null || ros.map.isEmpty())) {
-          System.out.println("        STARTing: " + i);
           latch.incrementAndGet();
           ros.sub_context = buildQuery(slices[i], slices[i] + 
               interval_in_seconds, context, ros);
@@ -710,7 +514,6 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
   }
   
   boolean okToRunMisses(final int hits) {
-    System.out.println("       HITS %: " + ((double) hits) / (double) keys.length);
     return hits > 0 && ((double) hits / (double) keys.length) > .60;
   }
   
@@ -727,6 +530,29 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
       return false;
     }
     return true;
+  }
+  
+  void cleanup() {
+    for (int i = 0; i < results.length; i++) {
+      if (results[i].map == null) {
+        for (final QueryResult result : results[i].map.values()) {
+          try {
+            result.close();
+          } catch (Throwable t) {
+            LOG.warn("Failed to close result", t);
+          }
+        }
+      }
+      
+      results[i].map = null;
+      if (results[i].sub_context != null) {
+        try {
+          results[i].sub_context.close();
+        } catch (Throwable t) {
+          LOG.warn("Failed to close sub context", t);
+        }
+      }
+    }
   }
   
   class SubQueryCB implements Callback<Void, Void> {

@@ -1008,6 +1008,9 @@ public class TestReadCacheQueryPipelineContext {
     
     ((MockQueryContext) ctx.sub_context).sink.onNext(mockResult("m1", "m1"));
     verify(sink, times(1)).onNext(any(QueryResult.class));
+    
+    // cleaned up
+    assertNull(ctx.results[4].map);
   }
   
   CacheQueryResult buildFakeFullResult(final ReadCacheQueryPipelineContext ctx,
@@ -1084,6 +1087,7 @@ public class TestReadCacheQueryPipelineContext {
     final QuerySink sink;
     boolean initialized;
     boolean fetched;
+    boolean closed;
     
     MockQueryContext(final int start, final QuerySink sink) {
       this.start = start;
@@ -1109,8 +1113,7 @@ public class TestReadCacheQueryPipelineContext {
 
     @Override
     public void close() {
-      // TODO Auto-generated method stub
-      
+      closed = true;
     }
 
     @Override
