@@ -644,9 +644,9 @@ System.out.println("SINK CONFIGS......... " + context.sinkConfigs() + " FOR: " +
         AtomicInteger cntr = countdowns.get(result.source().config().getId() + ":" 
             + result.dataSource());
         if (cntr == null) {
-          LOG.error("Unexpected result source, noo counter for: " 
+          LOG.error("Unexpected result source, no counter for: " 
               + result.source().config().getId() + ":" 
-              + result.dataSource(), new RuntimeException());
+              + result.dataSource(), new RuntimeException("Whoops"));
         } else {
           cntr.decrementAndGet();
         }

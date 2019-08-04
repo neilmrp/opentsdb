@@ -97,7 +97,7 @@ public class TestReadCacheQueryPipelineContext {
     
     DownsampleFactory factory = new DownsampleFactory();
     factory.initialize(TSDB, null).join();
-    when(TSDB.registry.getDefaultPlugin(DownsampleFactory.class))
+    when(TSDB.registry.getQueryNodeFactory(anyString()))
       .thenReturn(factory);
     
     QuerySinkFactory sink_factory = mock(QuerySinkFactory.class);

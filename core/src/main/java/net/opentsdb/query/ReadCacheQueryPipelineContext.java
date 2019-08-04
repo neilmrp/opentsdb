@@ -118,8 +118,14 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
     interval_in_seconds = 0;
     int ds_interval = Integer.MAX_VALUE;
     for (final QueryNodeConfig config : context.query().getExecutionGraph()) {
-      final DownsampleFactory factory = context.tsdb().getRegistry()
-          .getDefaultPlugin(DownsampleFactory.class);
+      final QueryNodeFactory factory = context.tsdb().getRegistry()
+          .getQueryNodeFactory(DownsampleFactory.TYPE);
+      if (factory == null) {
+        LOG.error("WTF!!!!!!!!!!!!!! NULL DS????");
+      }
+      if (((DownsampleFactory) factory).intervals() == null) {
+        LOG.error("WTF????????????? NULLI NTERVALS");
+      }
       if (config instanceof DownsampleConfig) {
         String interval;
         if (((DownsampleConfig) config).getRunAll()) {
@@ -129,7 +135,8 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
             .toLowerCase().equals("auto")) {
           final long delta = context.query().endTime().msEpoch() - 
               context.query().startTime().msEpoch();
-          interval = DownsampleFactory.getAutoInterval(delta, factory.intervals());
+          interval = DownsampleFactory.getAutoInterval(delta, 
+              ((DownsampleFactory) factory).intervals());
           System.out.println("       AUTO: " + interval);
         } else {
           // normal interval
@@ -285,21 +292,6 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
       }
       
       if (latch.decrementAndGet() == 0) {
-        // all results are in! Now see if we're a tip and if so then we need to see
-        // if we need to run
-        if (requestTip(idx, result.lastValueTimestamp())) {
-          ros.map = null;
-          System.out.println("     TIP QUERY at final latch");
-          if (okToRunMisses(hits.get())) {
-            latch.incrementAndGet();
-            ros.sub_context = buildQuery(slices[idx], slices[idx] + interval_in_seconds, context, ros);
-            ros.sub_context.initialize(null)
-              .addCallback(new SubQueryCB(ros.sub_context))
-              .addErrback(new ErrorCB());
-          }
-          return;
-        }
-        
         // all cache are in, see if we should send up or if we need to fire
         // sub queries.
         processResults();
@@ -477,16 +469,17 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
                                  final QueryContext context, 
                                  final QuerySink sink) {
     final SemanticQuery.Builder builder = ((SemanticQuery) context.query())
-        .toBuilder();
-    builder.setStart(Integer.toString(start));
-    builder.setEnd(Integer.toString(end));
+        .toBuilder()
+        .setCacheMode(CacheMode.BYPASS)
+        .setStart(Integer.toString(start))
+        .setEnd(Integer.toString(end));
     
     return SemanticQueryContext.newBuilder()
         .setTSDB(context.tsdb())
+        .setLocalSinks((List<QuerySink>) Lists.newArrayList(sink))
         .setQuery(builder.build())
         .setStats(context.stats())
         .setAuthState(context.authState())
-        .addSink(sink)
         .build();
   }
 
@@ -529,7 +522,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
   boolean requestTip(final int index, final TimeStamp ts) {
     // if the index is earlier than the final two buckets then we know we
     // don't need to request any data as it's old enough.
-    if (index < results.length - 3) {
+    if (index < results.length - 3 || ts == null) {
       System.out.println(" IDX : " + index);
       return false;
     }
@@ -543,7 +536,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
   
   void cleanup() {
     for (int i = 0; i < results.length; i++) {
-      if (results[i].map == null) {
+      if (results[i].map != null) {
         for (final QueryResult result : results[i].map.values()) {
           try {
             result.close();
@@ -616,12 +609,16 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
             } catch (Throwable t) {
               LOG.error("Failed to cache the data", t);
             } finally {
-              for (int i = 0; i < sub_results.size(); i++) {
-                sub_results.get(i).close();
-              }
+//              for (int i = 0; i < sub_results.size(); i++) {
+//                sub_results.get(i).close();
+//              }
             }
           }
         }, context);
+      } else {
+//        for (int i = 0; i < sub_results.size(); i++) {
+//          sub_results.get(i).close();
+//        }
       }
     }
     
@@ -634,7 +631,11 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
         }
         sub_results.add(next);
       }
+      // TODO - do we need to wrap this?
       ReadCacheQueryPipelineContext.this.onNext(next);
+//      if (next instanceof ResultWrapper) {
+//        ((ResultWrapper) next).closeWrapperOnly();
+//      }
     }
     
     @Override

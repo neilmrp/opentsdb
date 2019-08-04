@@ -150,6 +150,7 @@ public abstract class BaseQueryContext implements QueryContext {
     class FilterCB implements Callback<Deferred<Void>, Void> {
       @Override
       public Deferred<Void> call(final Void ignored) throws Exception {
+        System.out.println("-------- CACHE MODE: " + query.getCacheMode());
         if (query.getCacheMode() == CacheMode.BYPASS) {
           pipeline = new LocalPipeline(BaseQueryContext.this, builder_sinks);
           return pipeline.initialize(local_span);
@@ -177,6 +178,12 @@ public abstract class BaseQueryContext implements QueryContext {
           .addBoth(Deferreds.VOID_GROUP_CB)
           .addCallbackDeferring(new FilterCB());
     } else {
+      System.out.println("-------- CACHE MODE: " + query.getCacheMode());
+      if (query.getCacheMode() == CacheMode.BYPASS) {
+        pipeline = new LocalPipeline(BaseQueryContext.this, builder_sinks);
+      } else {
+        pipeline = new ReadCacheQueryPipelineContext(BaseQueryContext.this, builder_sinks);
+      }
       return pipeline.initialize(local_span);
     }
   }
@@ -347,6 +354,11 @@ public abstract class BaseQueryContext implements QueryContext {
     @Override
     public QueryContextBuilder setSinks(final List<QuerySinkConfig> configs) {
       this.sink_configs = configs;
+      return this;
+    }
+    
+    public QueryContextBuilder setLocalSinks(final List<QuerySink> sinks) {
+      this.sinks = sinks;
       return this;
     }
     

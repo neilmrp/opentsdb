@@ -56,6 +56,8 @@ public interface QueryContextBuilder {
    */
   public QueryContextBuilder setSinks(final List<QuerySinkConfig> configs);
   
+  public QueryContextBuilder setLocalSinks(final List<QuerySink> sinks);
+  
   /**
    * Adds a non-null sink config to the list of sink configs. Does not
    * check for duplicates.

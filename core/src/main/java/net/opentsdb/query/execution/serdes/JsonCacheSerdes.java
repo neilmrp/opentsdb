@@ -25,6 +25,7 @@ import com.stumbleupon.async.Deferred;
 import net.opentsdb.common.Const;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.data.BaseTimeSeriesStringId;
+import net.opentsdb.data.MillisecondTimeStamp;
 import net.opentsdb.data.SecondTimeStamp;
 import net.opentsdb.data.TimeSeries;
 import net.opentsdb.data.TimeSeriesDataType;
@@ -34,6 +35,7 @@ import net.opentsdb.data.TimeSeriesValue;
 import net.opentsdb.data.TimeSpecification;
 import net.opentsdb.data.TimeStamp;
 import net.opentsdb.data.TypedTimeSeriesIterator;
+import net.opentsdb.data.TimeStamp.Op;
 import net.opentsdb.data.types.event.EventGroupType;
 import net.opentsdb.data.types.event.EventType;
 import net.opentsdb.data.types.event.EventsGroupValue;
@@ -97,12 +99,13 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
         boolean wasStatus = false;
         boolean wasEvent =false;
         String namespace = null;
-        
+        TimeStamp ts = new SecondTimeStamp(0);
         for (final TimeSeries series : result.timeSeries()) {
           serializeSeries(series, 
               (TimeSeriesStringId) series.id(),
               json,
               null,
+              ts,
               result);
           if (!wasStatus ) {
             for (final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator :
@@ -118,8 +121,8 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
         }
         // end of the data array
         json.writeEndArray();
-
-        if(wasStatus && null != namespace && !namespace.isEmpty()) {
+        json.writeNumberField("lastValueTimestamp", ts.epoch());
+        if (wasStatus && null != namespace && !namespace.isEmpty()) {
           json.writeStringField("namespace", namespace);
         }
 
@@ -158,18 +161,10 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
   private void serializeSeries(
       final TimeSeries series,
       final TimeSeriesStringId id,
-      JsonGenerator json,
+      final JsonGenerator json,
       final List<String> sets,
+      final TimeStamp last_value,
       final QueryResult result) throws IOException {
-
-//    final ByteArrayOutputStream baos;
-//    if (json == null) {
-//      baos = new ByteArrayOutputStream();
-//      json = JSON.getFactory().createGenerator(baos);
-//    } else {
-//      baos = null;
-//    }
-
     boolean wrote_values = false;
     boolean was_status = false;
     boolean was_event = false;
@@ -213,15 +208,15 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
 //          }
 
           if (iterator.getType() == NumericType.TYPE) {
-            if (writeNumeric((TimeSeriesValue<NumericType>) value, iterator, json, result, wrote_values)) {
+            if (writeNumeric((TimeSeriesValue<NumericType>) value, iterator, json, result, last_value, wrote_values)) {
               wrote_values = true;
             }
           } else if (iterator.getType() == NumericSummaryType.TYPE) {
-            if (writeNumericSummary(value, iterator, json, result, wrote_values)) {
+            if (writeNumericSummary(value, iterator, json, result, last_value, wrote_values)) {
               wrote_values = true;
             }
           } else if (iterator.getType() == NumericArrayType.TYPE) {
-            if(writeNumericArray((TimeSeriesValue<NumericArrayType>) value, iterator, json, result, wrote_values)) {
+            if(writeNumericArray((TimeSeriesValue<NumericArrayType>) value, iterator, json, result, last_value, wrote_values)) {
               wrote_values = true;
             }
           }
@@ -252,16 +247,6 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       }
       json.writeEndObject();
     }
-
-//    if (baos != null) {
-//      json.close();
-//      synchronized(sets) {
-//        sets.add(new String(baos.toByteArray(), Const.UTF8_CHARSET));
-//      }
-//      baos.close();
-//    } else {
-//      json.flush();
-//    }
   }
 
   private boolean writeNumeric(
@@ -269,10 +254,12 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator,
       final JsonGenerator json,
       final QueryResult result,
+      final TimeStamp last_value,
       boolean wrote_values) throws IOException {
     boolean wrote_type = false;
     if (result.timeSpecification() != null) {
       // just the values
+      TimeStamp ts = result.timeSpecification().start().getCopy();
       while (value != null) {
         if (!wrote_values) {
           json.writeStartObject();
@@ -289,9 +276,17 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
           if ((value).value().isInteger()) {
             json.writeNumber(
                 (value).value().longValue());
+            if (ts.compare(Op.GT, last_value)) {
+              last_value.update(ts);
+            }
           } else {
             json.writeNumber(
                 (value).value().doubleValue());
+            if (!Double.isNaN(value.value().doubleValue())) {
+              if (ts.compare(Op.GT, last_value)) {
+                last_value.update(ts);
+              }
+            }
           }
         }
 
@@ -300,6 +295,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
         } else {
           value = null;
         }
+        ts.add(result.timeSpecification().interval());
       }
       json.writeEndArray();
       return wrote_type;
@@ -326,9 +322,17 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
         if ((value).value().isInteger()) {
           json.writeNumberField(ts_string,
               (value).value().longValue());
+          if (ts > last_value.epoch()) {
+            last_value.updateEpoch(ts);
+          }
         } else {
           json.writeNumberField(ts_string,
               (value).value().doubleValue());
+          if (!Double.isNaN(value.value().doubleValue())) {
+            if (ts > last_value.epoch()) {
+              last_value.updateEpoch(ts);
+            }
+          }
         }
       }
 
@@ -350,6 +354,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator,
       final JsonGenerator json,
       final QueryResult result,
+      final TimeStamp last_value,
       boolean wrote_values) throws IOException {
 
     boolean wrote_type = false;
@@ -358,6 +363,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       Integer summary = null;
 
       // just the values
+      TimeStamp ts = result.timeSpecification().start().getCopy();
       while (value != null) {
         if (!wrote_values) {
           json.writeStartObject();
@@ -382,9 +388,17 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
           if ((value).value().value(summary).isInteger()) {
             json.writeNumber(
                 (value).value().value(summary).longValue());
+            if (ts.compare(Op.GT, last_value)) {
+              last_value.update(ts);
+            }
           } else {
             json.writeNumber(
                 (value).value().value(summary).doubleValue());
+            if (!Double.isNaN(value.value().value(summary).doubleValue())) {
+              if (ts.compare(Op.GT, last_value)) {
+                last_value.update(ts);
+              }
+            }
           }
         }
 
@@ -393,6 +407,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
         } else {
           value = null;
         }
+        ts.add(result.timeSpecification().interval());
       }
       json.writeEndArray();
       return wrote_type;
@@ -427,9 +442,17 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
         if ((value).value().value(summary).isInteger()) {
           json.writeNumberField(ts_string,
               (value).value().value(summary).longValue());
+          if (ts > last_value.epoch()) {
+            last_value.updateEpoch(ts);
+          }
         } else {
           json.writeNumberField(ts_string,
               (value).value().value(summary).doubleValue());
+          if (!Double.isNaN(value.value().value(summary).doubleValue())) {
+            if (ts > last_value.epoch()) {
+              last_value.updateEpoch(ts);
+            }
+          }
         }
       }
 
@@ -448,13 +471,19 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator,
       final JsonGenerator json,
       final QueryResult result,
+      final TimeStamp last_value,
       boolean wrote_values) throws IOException {
 
     boolean wrote_type = false;
     if (result.timeSpecification() != null) {
       if (!(result.source() instanceof Summarizer)) {
-        return writeRollupNumeric((TimeSeriesValue<NumericSummaryType>) value, iterator, json,
-            result, wrote_values);
+        return writeRollupNumeric(
+            (TimeSeriesValue<NumericSummaryType>) value, 
+            iterator, 
+            json,
+            result, 
+            last_value, 
+            wrote_values);
       }
 
       Collection<Integer> summaries =
@@ -493,8 +522,16 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
               json.writeNull();
             } else if (summary_value.isInteger()) {
               json.writeNumber(summary_value.longValue());
+              if (ts > last_value.epoch()) {
+                last_value.updateEpoch(ts);
+              }
             } else {
               json.writeNumber(summary_value.doubleValue());
+              if (!Double.isNaN(summary_value.doubleValue())) {
+                if (ts > last_value.epoch()) {
+                  last_value.updateEpoch(ts);
+                }  
+              }
             }
           }
           json.writeEndArray();
@@ -515,8 +552,13 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
 
     // Rollups result would typically be a groupby and not a summarizer
     if (!(result.source() instanceof Summarizer)) {
-      return writeRollupNumeric((TimeSeriesValue<NumericSummaryType>) value,
-          iterator, json, result, wrote_values);
+      return writeRollupNumeric(
+          (TimeSeriesValue<NumericSummaryType>) value,
+          iterator, 
+          json, 
+          result, 
+          last_value,
+          wrote_values);
     }
 
     if (((TimeSeriesValue<NumericSummaryType>) value).value() != null) {
@@ -555,8 +597,16 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
               json.writeNull();
             } else if (summary_value.isInteger()) {
               json.writeNumber(summary_value.longValue());
+              if (ts > last_value.epoch()) {
+                last_value.updateEpoch(ts);
+              }
             } else {
               json.writeNumber(summary_value.doubleValue());
+              if (!Double.isNaN(summary_value.doubleValue())) {
+                if (ts > last_value.epoch()) {
+                  last_value.updateEpoch(ts);
+                }
+              }
             }
           }
           json.writeEndArray();
@@ -580,6 +630,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator,
       final JsonGenerator json,
       final QueryResult result,
+      final TimeStamp last_value,
       boolean wrote_values) throws IOException {
 
     if (value.value().end() < 1) {
@@ -589,6 +640,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
 
     // we can assume here that we have a time spec as we can't get arrays
     // without it.
+    TimeStamp ts = result.timeSpecification().start().getCopy();
     boolean wrote_type = false;
     for (int i = value.value().offset(); i < value.value().end(); i++) {
       if (!wrote_values) {
@@ -601,9 +653,18 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       }
       if (value.value().isInteger()) {
         json.writeNumber(value.value().longArray()[i]);
+        if (ts.compare(Op.GT, last_value)) {
+          last_value.update(ts);
+        }
       } else {
         json.writeNumber(value.value().doubleArray()[i]);
+        if (!Double.isNaN(value.value().doubleArray()[i])) {
+          if (ts.compare(Op.GT, last_value)) {
+            last_value.update(ts);
+          }
+        }
       }
+      ts.add(result.timeSpecification().interval());
     }
     json.writeEndArray();
     return wrote_type;
@@ -696,7 +757,6 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
     json.writeStringField("message", statusValue.message());
     json.writeStringField("application", statusValue.application());
   }
-
   
   public class HttpQueryV3Result implements CachedQueryResult {
 
@@ -717,6 +777,8 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
     
     /** An optional rollup config from summaries. */
     private RollupConfig rollup_config;
+    
+    private TimeStamp last_value_ts;
 
     /** Object Mapper for serdes. */
     private final ObjectMapper mapper = new ObjectMapper();
@@ -756,6 +818,13 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
         JsonNode n = root.get("timeSpecification");
         if (n != null && !n.isNull()) {
           time_spec = new TimeSpec(n);
+        }
+        
+        n = root.get("lastValueTimestamp");
+        if (n != null && !n.isNull()) {
+          last_value_ts = new SecondTimeStamp(n.asInt());
+        } else {
+          throw new RuntimeException("Missing last value timestamp!");
         }
         
         n = root.get("data");
@@ -1376,12 +1445,10 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
 
     @Override
     public TimeStamp lastValueTimestamp() {
-      // TODO Auto-generated method stub
-      return null;
+      return last_value_ts;
     }
   }
-
-
+  
   @Override
   public String type() {
     // TODO Auto-generated method stub
