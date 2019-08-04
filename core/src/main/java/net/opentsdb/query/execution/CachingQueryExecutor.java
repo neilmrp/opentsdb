@@ -41,7 +41,7 @@ import net.opentsdb.query.QueryNode;
 import net.opentsdb.query.QueryPipelineContext;
 import net.opentsdb.query.QueryResult;
 import net.opentsdb.query.QuerySourceFactory;
-import net.opentsdb.query.execution.cache.QueryCachePlugin;
+import net.opentsdb.query.cache.QueryCachePlugin;
 import net.opentsdb.query.execution.cache.TimeSeriesCacheKeyGenerator;
 import net.opentsdb.query.plan.QueryPlanner;
 import net.opentsdb.query.serdes.TimeSeriesSerdes;
@@ -435,25 +435,25 @@ public class CachingQueryExecutor extends BaseTSDBPlugin implements QuerySourceF
       }
       
       try {
-        if (config.getBypass()) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Bypassing cache query.");
-          }
-          fetchDownstream(child);
-        } else if (config.simultaneous) {
-            // fire both before attaching callbacks to avoid a race on canceling
-            // the executors.
-            cache_execution = plugin.fetch(context.queryContext(), key, child);
-            fetchDownstream(child);
-            cache_execution.deferred()
-              .addCallback(new CacheCB())
-              .addErrback(new ErrorCB());
-        } else {
-          cache_execution = plugin.fetch(context.queryContext(), key, child);
-          cache_execution.deferred()
-            .addCallback(new CacheCB())
-            .addErrback(new ErrorCB());
-        }
+//        if (config.getBypass()) {
+//          if (LOG.isDebugEnabled()) {
+//            LOG.debug("Bypassing cache query.");
+//          }
+//          fetchDownstream(child);
+//        } else if (config.simultaneous) {
+//            // fire both before attaching callbacks to avoid a race on canceling
+//            // the executors.
+//            cache_execution = plugin.fetch(context.queryContext(), key, child);
+//            fetchDownstream(child);
+//            cache_execution.deferred()
+//              .addCallback(new CacheCB())
+//              .addErrback(new ErrorCB());
+//        } else {
+//          cache_execution = plugin.fetch(context.queryContext(), key, child);
+//          cache_execution.deferred()
+//            .addCallback(new CacheCB())
+//            .addErrback(new ErrorCB());
+//        }
       } catch (Exception e) {
         try {
           final Exception ex = new QueryExecutionCanceled(

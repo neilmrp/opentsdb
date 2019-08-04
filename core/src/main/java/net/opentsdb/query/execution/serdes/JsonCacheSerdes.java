@@ -48,6 +48,7 @@ import net.opentsdb.data.types.status.StatusType;
 import net.opentsdb.data.types.status.StatusValue;
 import net.opentsdb.query.QueryNode;
 import net.opentsdb.query.QueryResult;
+import net.opentsdb.query.cache.QueryCachePlugin.CachedQueryResult;
 import net.opentsdb.query.processor.summarizer.Summarizer;
 import net.opentsdb.query.serdes.TimeSeriesCacheSerdes;
 import net.opentsdb.query.serdes.TimeSeriesCacheSerdesFactory;
@@ -137,14 +138,14 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
   }
 
   @Override
-  public Map<String, QueryResult> deserialize(byte[] data) {
+  public Map<String, CachedQueryResult> deserialize(byte[] data) {
     System.out.println("------------- DESER: " + Bytes.pretty(data));
-    Map<String, QueryResult> map = Maps.newHashMap();
+    Map<String, CachedQueryResult> map = Maps.newHashMap();
     try {
       JsonNode results = JSON.getMapper().readTree(data);
     
       for (final JsonNode result : results) {
-        QueryResult r = new HttpQueryV3Result(null, result, null);
+        CachedQueryResult r = new HttpQueryV3Result(null, result, null);
         map.put(r.source().config().getId() + ":" + r.dataSource(), r);
       }
     } catch (IOException e) {
@@ -697,7 +698,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
   }
 
   
-  public class HttpQueryV3Result implements QueryResult {
+  public class HttpQueryV3Result implements CachedQueryResult {
 
     /** The node that owns us. */
     private QueryNode node;
@@ -1372,6 +1373,12 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       }
       
     }
+
+    @Override
+    public TimeStamp lastValueTimestamp() {
+      // TODO Auto-generated method stub
+      return null;
+    }
   }
 
 
@@ -1408,5 +1415,12 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
   @Override
   public TimeSeriesCacheSerdes getSerdes() {
     return this;
+  }
+
+  @Override
+  public byte[][] serialize(int[] timestamps, byte[][] keys,
+      Collection<QueryResult> results) {
+    // TODO Auto-generated method stub
+    return null;
   }
 }

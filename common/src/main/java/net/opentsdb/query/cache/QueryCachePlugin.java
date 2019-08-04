@@ -12,7 +12,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package net.opentsdb.query.execution.cache;
+package net.opentsdb.query.cache;
 
 import java.util.Collection;
 import java.util.Map;
@@ -21,10 +21,8 @@ import java.util.concurrent.TimeUnit;
 import com.stumbleupon.async.Deferred;
 
 import net.opentsdb.data.TimeStamp;
-import net.opentsdb.query.QueryContext;
 import net.opentsdb.query.QueryPipelineContext;
 import net.opentsdb.query.QueryResult;
-import net.opentsdb.query.execution.QueryExecution;
 import net.opentsdb.stats.Span;
 
 /**
@@ -44,14 +42,18 @@ import net.opentsdb.stats.Span;
  */
 public interface QueryCachePlugin {
 
-  public static interface CacheQueryResult {
+  public static interface CachedQueryResult extends QueryResult {
+    public TimeStamp lastValueTimestamp();
+  }
+  
+  public static interface CacheQueryResults {
     public TimeStamp lastValueTimestamp();
     public byte[] key();
-    public Map<String, QueryResult> results();
+    public Map<String, CachedQueryResult> results();
   }
   
   public static interface CacheCB {
-    public void onCacheResult(final CacheQueryResult result);
+    public void onCacheResult(final CacheQueryResults result);
     
     public void onCacheError(final Throwable t);
     
@@ -69,42 +71,42 @@ public interface QueryCachePlugin {
   public Deferred<Void> cache(final int[] timestamps,
                               final byte[][] keys,
                               final Collection<QueryResult> results);
-  
-  /**
-   * Attempts to fetch a key from the cache. If no results were found, the 
-   * deferred should resolve to a null. Note that temporary cache exceptions
-   * should be logged and not returned upstream.
-   * @param context A non-null query context used for tracing.
-   * @param key A non-null and non-empty byte array key.
-   * @param upstream_span An optional span for tracing.
-   * @return A QueryExecution resolving to a null on cache miss, a value on 
-   * cache hit or an exception if something went terribly wrong.
-   * @throws IllegalStateException of the cache has not been initialized.
-   * @throws IllegalArgumentException if the key was null or empty.
-   */
-  public QueryExecution<byte[]> fetch(final QueryContext context, 
-                                      final byte[] key,
-                                      final Span upstream_span);
-  
-  /**
-   * Attempts to fetch multiple keys from the cache in a single call. The 
-   * resulting deferred array of byte arrays must have the same length of the
-   * keys array and may not be null. Results must appear in the same order as
-   * the given keys. Note that temporary cache exceptions should be logged and
-   * not returned upstream.
-   * @param context A non-null query context used for tracing.
-   * @param keys A non-null and non-empty array of non-null and non-empty
-   * byte arrays representing keys in the cache.
-   * @param upstream_span An optional span for tracing.
-   * @return A QueryExecution resolving to an array with nulls or values 
-   * depending on key hits and misses or an exception if something went 
-   * terribly wrong.
-   * @throws IllegalStateException of the cache has not been initialized.
-   * @throws IllegalArgumentException if the keys were null or empty.
-   */
-  public QueryExecution<byte[][]> fetch(final QueryContext context,
-                                        final byte[][] keys,
-                                        final Span upstream_span);
+//  
+//  /**
+//   * Attempts to fetch a key from the cache. If no results were found, the 
+//   * deferred should resolve to a null. Note that temporary cache exceptions
+//   * should be logged and not returned upstream.
+//   * @param context A non-null query context used for tracing.
+//   * @param key A non-null and non-empty byte array key.
+//   * @param upstream_span An optional span for tracing.
+//   * @return A QueryExecution resolving to a null on cache miss, a value on 
+//   * cache hit or an exception if something went terribly wrong.
+//   * @throws IllegalStateException of the cache has not been initialized.
+//   * @throws IllegalArgumentException if the key was null or empty.
+//   */
+//  public QueryExecution<byte[]> fetch(final QueryContext context, 
+//                                      final byte[] key,
+//                                      final Span upstream_span);
+//  
+//  /**
+//   * Attempts to fetch multiple keys from the cache in a single call. The 
+//   * resulting deferred array of byte arrays must have the same length of the
+//   * keys array and may not be null. Results must appear in the same order as
+//   * the given keys. Note that temporary cache exceptions should be logged and
+//   * not returned upstream.
+//   * @param context A non-null query context used for tracing.
+//   * @param keys A non-null and non-empty array of non-null and non-empty
+//   * byte arrays representing keys in the cache.
+//   * @param upstream_span An optional span for tracing.
+//   * @return A QueryExecution resolving to an array with nulls or values 
+//   * depending on key hits and misses or an exception if something went 
+//   * terribly wrong.
+//   * @throws IllegalStateException of the cache has not been initialized.
+//   * @throws IllegalArgumentException if the keys were null or empty.
+//   */
+//  public QueryExecution<byte[][]> fetch(final QueryContext context,
+//                                        final byte[][] keys,
+//                                        final Span upstream_span);
   
   /**
    * Adds the given data to the cache using the given key. For expiring caches

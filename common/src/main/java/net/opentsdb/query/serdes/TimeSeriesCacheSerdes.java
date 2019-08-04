@@ -3,13 +3,17 @@ package net.opentsdb.query.serdes;
 import java.util.Collection;
 import java.util.Map;
 
-import com.stumbleupon.async.Deferred;
-
 import net.opentsdb.query.QueryResult;
+import net.opentsdb.query.cache.QueryCachePlugin.CachedQueryResult;
 
 public interface TimeSeriesCacheSerdes {
 
   public byte[] serialize(final Collection<QueryResult> results);
 
-  public Map<String, QueryResult> deserialize(final byte[] data);
+  public byte[][] serialize(final int[] timestamps, 
+                            final byte[][] keys,
+                            final Collection<QueryResult> results);
+  
+  public Map<String, CachedQueryResult> deserialize(final byte[] data);
+  
 }

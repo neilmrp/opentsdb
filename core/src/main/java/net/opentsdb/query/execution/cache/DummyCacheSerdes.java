@@ -24,11 +24,13 @@ import net.opentsdb.data.TimeSeriesId;
 import net.opentsdb.data.TimeSeriesStringId;
 import net.opentsdb.data.TimeSeriesValue;
 import net.opentsdb.data.TimeSpecification;
+import net.opentsdb.data.TimeStamp;
 import net.opentsdb.data.TypedTimeSeriesIterator;
 import net.opentsdb.data.types.numeric.MutableNumericValue;
 import net.opentsdb.query.QueryContext;
 import net.opentsdb.query.QueryNode;
 import net.opentsdb.query.QueryResult;
+import net.opentsdb.query.cache.QueryCachePlugin.CachedQueryResult;
 import net.opentsdb.query.serdes.TimeSeriesCacheSerdes;
 import net.opentsdb.query.serdes.TimeSeriesCacheSerdesFactory;
 import net.opentsdb.rollup.RollupConfig;
@@ -44,9 +46,9 @@ public class DummyCacheSerdes extends BaseTSDBPlugin implements TimeSeriesCacheS
   }
   
   @Override
-  public Map<String, QueryResult> deserialize(final byte[] data) {
+  public Map<String, CachedQueryResult> deserialize(final byte[] data) {
     
-    class RS implements QueryResult {
+    class RS implements CachedQueryResult {
       MockTimeSeries mts;
       RS() {
         mts = new MockTimeSeries(BaseTimeSeriesStringId.newBuilder()
@@ -125,10 +127,16 @@ public class DummyCacheSerdes extends BaseTSDBPlugin implements TimeSeriesCacheS
         // TODO Auto-generated method stub
         
       }
+
+      @Override
+      public TimeStamp lastValueTimestamp() {
+        // TODO Auto-generated method stub
+        return null;
+      }
       
     }
     
-    Map<String, QueryResult> map = Maps.newHashMap();
+    Map<String, CachedQueryResult> map = Maps.newHashMap();
     map.put("ds:m1", new RS());
     return map;
   }
@@ -282,6 +290,13 @@ public class DummyCacheSerdes extends BaseTSDBPlugin implements TimeSeriesCacheS
       
     }
     
+  }
+
+  @Override
+  public byte[][] serialize(int[] timestamps, byte[][] keys,
+      Collection<QueryResult> results) {
+    // TODO Auto-generated method stub
+    return null;
   }
 
 }

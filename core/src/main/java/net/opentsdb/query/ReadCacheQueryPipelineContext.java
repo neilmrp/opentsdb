@@ -36,16 +36,16 @@ import net.opentsdb.data.types.numeric.NumericSummaryType;
 import net.opentsdb.data.types.numeric.NumericType;
 import net.opentsdb.query.AbstractQueryPipelineContext.ResultWrapper;
 import net.opentsdb.query.TimeSeriesQuery.CacheMode;
-import net.opentsdb.query.execution.cache.CachingSemanticQueryContext;
+import net.opentsdb.query.cache.QueryCachePlugin;
+import net.opentsdb.query.cache.QueryCachePlugin.CacheCB;
+import net.opentsdb.query.cache.QueryCachePlugin.CacheQueryResults;
+import net.opentsdb.query.cache.QueryCachePlugin.CachedQueryResult;
 import net.opentsdb.query.execution.cache.CombinedArray;
 import net.opentsdb.query.execution.cache.CombinedNumeric;
 import net.opentsdb.query.execution.cache.CombinedResult;
 import net.opentsdb.query.execution.cache.CombinedSummary;
 import net.opentsdb.query.execution.cache.DefaultTimeSeriesCacheKeyGenerator;
-import net.opentsdb.query.execution.cache.QueryCachePlugin;
 import net.opentsdb.query.execution.cache.TimeSeriesCacheKeyGenerator;
-import net.opentsdb.query.execution.cache.QueryCachePlugin.CacheCB;
-import net.opentsdb.query.execution.cache.QueryCachePlugin.CacheQueryResult;
 import net.opentsdb.query.processor.downsample.DownsampleConfig;
 import net.opentsdb.query.processor.downsample.DownsampleFactory;
 import net.opentsdb.rollup.RollupConfig;
@@ -224,7 +224,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
   }
   
   @Override
-  public void onCacheResult(final CacheQueryResult result) {
+  public void onCacheResult(final CacheQueryResults result) {
     if (failed.get()) {
       return;
     }
@@ -237,7 +237,12 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
           synchronized (results) {
             results[i] = new ResultOrSubQuery();
             results[i].key = result.key();
-            results[i].map = result.results();
+            if (result.results() != null && !result.results().isEmpty()) {
+              results[i].map = Maps.newHashMapWithExpectedSize(result.results().size());
+              for (final Entry<String, CachedQueryResult> entry : result.results().entrySet()) {
+                results[i].map.put(entry.getKey(), entry.getValue());
+              }
+            }
           }
           ros = results[i];
           idx = i;

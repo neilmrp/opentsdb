@@ -51,7 +51,6 @@ import net.opentsdb.exceptions.QueryExecutionException;
 import net.opentsdb.query.QueryMode;
 import net.opentsdb.query.SemanticQuery;
 import net.opentsdb.query.SemanticQueryContext;
-import net.opentsdb.query.execution.cache.CachingSemanticQueryContext;
 import net.opentsdb.query.execution.serdes.JsonV2QuerySerdesOptions;
 import net.opentsdb.query.serdes.SerdesOptions;
 import net.opentsdb.servlet.applications.OpenTSDBApplication;
@@ -211,8 +210,8 @@ public class RawQueryRpc {
           .setId("JsonV3QuerySerdes")
           .build();
     }
-
-    CachingSemanticQueryContext context = (CachingSemanticQueryContext) CachingSemanticQueryContext.newBuilder()
+    
+    SemanticQueryContext context = (SemanticQueryContext) SemanticQueryContext.newBuilder()
         .setTSDB(tsdb)
         .setQuery(query)
         .setStats(DefaultQueryStats.newBuilder()
@@ -228,22 +227,6 @@ public class RawQueryRpc {
             .setStatsTimer(timer)
             .build())
         .build();
-//    SemanticQueryContext context = (SemanticQueryContext) SemanticQueryContext.newBuilder()
-//        .setTSDB(tsdb)
-//        .setQuery(query)
-//        .setStats(DefaultQueryStats.newBuilder()
-//            .setTrace(trace)
-//            .setQuerySpan(query_span)
-//            .build())
-//        .setAuthState(auth_state)
-//        .addSink(ServletSinkConfig.newBuilder()
-//            .setId(ServletSinkFactory.TYPE)
-//            .setSerdesOptions(serdes)
-//            .setRequest(request)
-//            .setAsync(async)
-//            .setStatsTimer(timer)
-//            .build())
-//        .build();
     tsdb.registerRunningQuery(Long.parseLong(request.getHeader(
         OpenTSDBApplication.INTERNAL_HASH_HEADER)), context);
     

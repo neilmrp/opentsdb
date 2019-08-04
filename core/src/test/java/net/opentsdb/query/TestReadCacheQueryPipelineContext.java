@@ -47,9 +47,11 @@ import net.opentsdb.data.TimeSeriesDataSourceFactory;
 import net.opentsdb.data.TimeSeriesId;
 import net.opentsdb.data.types.numeric.NumericType;
 import net.opentsdb.query.QueryFillPolicy.FillWithRealPolicy;
-import net.opentsdb.query.execution.cache.QueryCachePlugin;
+import net.opentsdb.query.TimeSeriesQuery.CacheMode;
+import net.opentsdb.query.cache.QueryCachePlugin;
+import net.opentsdb.query.cache.QueryCachePlugin.CacheQueryResults;
+import net.opentsdb.query.cache.QueryCachePlugin.CachedQueryResult;
 import net.opentsdb.query.execution.cache.TimeSeriesCacheKeyGenerator;
-import net.opentsdb.query.execution.cache.QueryCachePlugin.CacheQueryResult;
 import net.opentsdb.query.filter.MetricLiteralFilter;
 import net.opentsdb.query.interpolation.types.numeric.NumericInterpolatorConfig;
 import net.opentsdb.query.pojo.FillPolicy;
@@ -633,6 +635,57 @@ public class TestReadCacheQueryPipelineContext {
   }
   
   @Test
+  public void onCacheResultsGoodOneTipLastReadOnly() throws Exception {
+    setQuery(1514765700, 1514787300, "5m", false, CacheMode.READONLY);
+    PowerMockito.mockStatic(DateTime.class);
+    when(DateTime.currentTimeMillis()).thenReturn(1514787360000L);
+    when(DateTime.parseDuration(anyString())).thenCallRealMethod();
+    ReadCacheQueryPipelineContext ctx = spy(new ReadCacheQueryPipelineContext(context,
+        Lists.newArrayList(sink)));
+    ctx.initialize(null).join();
+    ctx.fetchNext(null);
+    assertEquals(7, ctx.results.length);
+    
+    assertEquals(1514787360000L, ctx.current_time);
+    assertEquals(7, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 4));
+    assertEquals(6, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 0));
+    assertEquals(5, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 1));
+    assertEquals(4, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 3));
+    assertEquals(3, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 5));
+    assertEquals(2, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 2));
+    assertEquals(1, ctx.latch.get());
+    
+    ctx.onCacheResult(buildFakeFullResult(ctx, 6, 1514787300));
+    assertEquals(1, ctx.latch.get());
+    
+    verify(sink, never()).onNext(any(QueryResult.class));
+    assertTrue(TSDB.runnables.isEmpty());
+    
+    assertTrue(((MockQueryContext) ctx.results[6].sub_context).initialized);
+    assertTrue(((MockQueryContext) ctx.results[6].sub_context).fetched);
+    ctx.results[6].onNext(mockResult("m1", "m1"));
+    ctx.results[6].onComplete();
+    
+    assertEquals(1, ctx.latch.get()); // reset to 1 as we now use it for our
+    // callback to close the results.
+    
+    verify(sink, times(1)).onNext(any(QueryResult.class));
+    assertTrue(TSDB.runnables.isEmpty()); // cached!
+  }
+  
+  @Test
   public void onCacheResultsGoodTwoTipsNotLast() throws Exception {
     setQuery(1514765700, 1514787300, "5m", false);
     PowerMockito.mockStatic(DateTime.class);
@@ -1013,42 +1066,52 @@ public class TestReadCacheQueryPipelineContext {
     assertNull(ctx.results[4].map);
   }
   
-  CacheQueryResult buildFakeFullResult(final ReadCacheQueryPipelineContext ctx,
+  CacheQueryResults buildFakeFullResult(final ReadCacheQueryPipelineContext ctx,
                                        final int idx) {
-    CacheQueryResult result = mock(CacheQueryResult.class);
+    CacheQueryResults result = mock(CacheQueryResults.class);
     when(result.key()).thenReturn(ctx.keys[idx]);
-    Map<String, QueryResult> results = Maps.newHashMap();
-    results.put("m1:m1", mock(QueryResult.class));
+    Map<String, CachedQueryResult> results = Maps.newHashMap();
+    results.put("m1:m1", mock(CachedQueryResult.class));
     when(result.results()).thenReturn(results);
     when(result.lastValueTimestamp()).thenReturn(new SecondTimeStamp(
         ctx.slices[idx] + ctx.interval_in_seconds));
     return result;
   }
   
-  CacheQueryResult buildFakeFullResult(final ReadCacheQueryPipelineContext ctx,
+  CacheQueryResults buildFakeFullResult(final ReadCacheQueryPipelineContext ctx,
                                        final int idx,
                                        final int timestamp) {
-    CacheQueryResult result = mock(CacheQueryResult.class);
+    CacheQueryResults result = mock(CacheQueryResults.class);
     when(result.key()).thenReturn(ctx.keys[idx]);
-    Map<String, QueryResult> results = Maps.newHashMap();
-    results.put("m1:m1", mock(QueryResult.class));
+    Map<String, CachedQueryResult> results = Maps.newHashMap();
+    results.put("m1:m1", mock(CachedQueryResult.class));
     when(result.results()).thenReturn(results);
     when(result.lastValueTimestamp()).thenReturn(new SecondTimeStamp(timestamp));
     return result;
   }
   
-  CacheQueryResult buildCacheMiss(final ReadCacheQueryPipelineContext ctx,
+  CacheQueryResults buildCacheMiss(final ReadCacheQueryPipelineContext ctx,
                                   final int idx) {
-    CacheQueryResult result = mock(CacheQueryResult.class);
+    CacheQueryResults result = mock(CacheQueryResults.class);
     when(result.key()).thenReturn(ctx.keys[idx]);
     return result;
   }
+  
   void setQuery(final int start, 
                 final int end, 
                 final String interval, 
                 final boolean runall) {
+    setQuery(start, end, interval, runall, CacheMode.NORMAL);
+  }
+  
+  void setQuery(final int start, 
+                final int end, 
+                final String interval, 
+                final boolean runall,
+                final CacheMode cache_mode) {
     SemanticQuery.Builder builder = SemanticQuery.newBuilder()
         .setMode(QueryMode.SINGLE)
+        .setCacheMode(cache_mode)
         .setStart(Integer.toString(start))
         .setEnd(Integer.toString(end))
         .addExecutionGraphNode(DefaultTimeSeriesDataSourceConfig.newBuilder()

@@ -29,7 +29,7 @@ import io.opentracing.Span;
 import net.opentsdb.core.Const;
 import net.opentsdb.exceptions.QueryExecutionCanceled;
 import net.opentsdb.query.BaseQueryNodeConfig;
-import net.opentsdb.query.execution.cache.QueryCachePlugin;
+import net.opentsdb.query.cache.QueryCachePlugin;
 import net.opentsdb.query.execution.cache.TimeSeriesCacheKeyGenerator;
 import net.opentsdb.query.pojo.TimeSeriesQuery;
 import net.opentsdb.query.serdes.TimeSeriesSerdes;
