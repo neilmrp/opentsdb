@@ -11,6 +11,9 @@ import net.opentsdb.data.TimeSeries;
 import net.opentsdb.data.TimeSeriesDataType;
 import net.opentsdb.data.TimeSeriesId;
 import net.opentsdb.data.TypedTimeSeriesIterator;
+import net.opentsdb.data.types.numeric.NumericArrayType;
+import net.opentsdb.data.types.numeric.NumericSummaryType;
+import net.opentsdb.data.types.numeric.NumericType;
 
 public class CombinedTimeSeries implements TimeSeries {
   List<TimeSeries> series;
@@ -30,13 +33,13 @@ public class CombinedTimeSeries implements TimeSeries {
   public Optional<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> iterator(
       TypeToken<? extends TimeSeriesDataType> type) {
     if (series.get(0).types().contains(type)) {
-//      if (type == NumericType.TYPE) {
-//        return Optional.of(new CombinedNumeric(series));
-//      } else if (type == NumericArrayType.TYPE) {
-//        return Optional.of(new CombinedArray(series));
-//      } else if (type == NumericSummaryType.TYPE) {
-//        return Optional.of(new CombinedSummary(series));
-//      }
+      if (type == NumericType.TYPE) {
+        return Optional.of(new CombinedNumeric(series));
+      } else if (type == NumericArrayType.TYPE) {
+        return Optional.of(new CombinedArray(series));
+      } else if (type == NumericSummaryType.TYPE) {
+        return Optional.of(new CombinedSummary(series));
+      }
     }
     return Optional.empty();
   }
@@ -46,13 +49,13 @@ public class CombinedTimeSeries implements TimeSeries {
     List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> iterators =
         Lists.newArrayList();
     TypeToken<? extends TimeSeriesDataType> type = series.get(0).types().iterator().next();
-//    if (type == NumericType.TYPE) {
-//      iterators.add(new CombinedNumeric(series));
-//    } else if (type == NumericArrayType.TYPE) {
-//      iterators.add(new CombinedArray(series));
-//    } else if (type == NumericSummaryType.TYPE) {
-//      iterators.add(new CombinedSummary(series));
-//    }
+    if (type == NumericType.TYPE) {
+      iterators.add(new CombinedNumeric(series));
+    } else if (type == NumericArrayType.TYPE) {
+      iterators.add(new CombinedArray(series));
+    } else if (type == NumericSummaryType.TYPE) {
+      iterators.add(new CombinedSummary(series));
+    }
     return iterators;
   }
 

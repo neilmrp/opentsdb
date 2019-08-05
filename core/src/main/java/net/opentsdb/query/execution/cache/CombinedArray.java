@@ -43,10 +43,10 @@ public class CombinedArray implements TypedTimeSeriesIterator<NumericArrayType>,
       } else {
         // size is important
         int expected = value.value().end() - value.value().offset() + idx;
-        if (long_array != null && expected >= long_array.length) {
+        if (long_array != null && expected > long_array.length) {
           // TODO - grow!!
-          throw new IllegalStateException("Whoops!");
-        } else if (double_array != null && expected >= double_array.length) {
+          throw new IllegalStateException("Whoops!  Array was " + long_array.length + "  but needed " + expected);
+        } else if (double_array != null && expected > double_array.length) {
           // TODO - grow!!
           throw new IllegalStateException("Whoops!");
         }

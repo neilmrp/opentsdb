@@ -146,7 +146,6 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
 
   @Override
   public Map<String, CachedQueryResult> deserialize(byte[] data) {
-    System.out.println("------------- DESER: " + Bytes.pretty(data));
     Map<String, CachedQueryResult> map = Maps.newHashMap();
     try {
       JsonNode results = JSON.getMapper().readTree(data);
