@@ -527,7 +527,7 @@ public abstract class AbstractQueryPipelineContext implements
     class PlanCB implements Callback<Void, Void> {
       @Override
       public Void call(final Void ignored) throws Exception {
-System.out.println("SINK CONFIGS......... " + context.sinkConfigs() + " FOR: " + this.getClass() + "  AND SINKS: " + sinks);
+System.out.println("BASE SINK CONFIGS......... " + context.sinkConfigs() + "  AND SINKS: " + sinks);
         // setup sinks if the graph is happy
         if (context.sinkConfigs() != null) {
           for (final QuerySinkConfig config : context.sinkConfigs()) {
@@ -598,6 +598,7 @@ System.out.println("SINK CONFIGS......... " + context.sinkConfigs() + " FOR: " +
     
     ResultWrapper(final QueryResult result) {
       super(result);
+      System.out.println("WRAPPED RESULT FROM : " + System.identityHashCode(AbstractQueryPipelineContext.this.context));
     }
     
     @Override
@@ -646,7 +647,8 @@ System.out.println("SINK CONFIGS......... " + context.sinkConfigs() + " FOR: " +
         if (cntr == null) {
           LOG.error("Unexpected result source, no counter for: " 
               + result.source().config().getId() + ":" 
-              + result.dataSource(), new RuntimeException("Whoops"));
+              + result.dataSource(), new RuntimeException("Whoops: " + 
+              System.identityHashCode(AbstractQueryPipelineContext.this.context)));
         } else {
           cntr.decrementAndGet();
         }

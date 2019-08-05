@@ -86,6 +86,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
     }
     failed = new AtomicBoolean();
     current_time = DateTime.currentTimeMillis();
+    System.out.println("      CACHE CTX ID: " + System.identityHashCode(context));
   }
   
   @Override
@@ -220,6 +221,8 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
         }
       }
     }
+    
+    System.out.println("CACHE SINK CONFIGS......... " + context.sinkConfigs() + "  AND SINKS: " + sinks);
     return Deferred.fromResult(null);
   }
 
@@ -266,7 +269,13 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
       if (ros.map == null || ros.map.isEmpty()) {
         System.out.println("  UH OH No hit!");
         // TODO - configure the threshold
-        if (okToRunMisses(hits.get())) {        
+        if (okToRunMisses(hits.get())) {
+          if (LOG.isTraceEnabled()) {
+            LOG.trace("Running sub query for interval at: " + slices[idx]);
+          }
+          if (query().isTraceEnabled()) {
+            context.logTrace("Running sub query for interval at: " + slices[idx]);
+          }
           ros.sub_context = ros.sub_context = buildQuery(slices[idx], slices[idx] + interval_in_seconds, context, ros);
           ros.sub_context.initialize(null)
             .addCallback(new SubQueryCB(ros.sub_context))
@@ -281,6 +290,12 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
           ros.map = null;
           if (okToRunMisses(hits.get())) {
             latch.incrementAndGet();
+            if (LOG.isTraceEnabled()) {
+              LOG.trace("Running sub query for interval at: " + slices[idx]);
+            }
+            if (query().isTraceEnabled()) {
+              context.logTrace("Running sub query for interval at: " + slices[idx]);
+            }
             ros.sub_context = ros.sub_context = buildQuery(slices[idx], slices[idx] + interval_in_seconds, context, ros);
             ros.sub_context.initialize(null)
               .addCallback(new SubQueryCB(ros.sub_context))
@@ -331,12 +346,22 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
             runCacheMissesAfterSatisfyingPercent();
           } else {
             // We failed the cache threshold so we run a FULL query.
-            System.out.println(" RUN THE FULL QUERY!!!!!!!");
+            if (LOG.isTraceEnabled()) {
+              LOG.trace("Too many cache misses: " + hits.get() + " out of " + slices.length + "; running the full query.");
+            }
+            if (query().isTraceEnabled()) {
+              context.logTrace("Too many cache misses: " + hits.get() + " out of " + slices.length + "; running the full query.");
+            }
+            if (sub_context != null) {
+              System.out.println("WTF???? SUB CONTEXT != null?");
+              throw new IllegalStateException("WTF???? SUB CONTEXT != null?");
+            }
             sub_context = buildQuery(
                 slices[0], 
                 slices[slices.length - 1] + interval_in_seconds, 
                 context, 
                 new FullQuerySink());
+            System.out.println("  FULL QUERY ID: " + System.identityHashCode(sub_context));
             sub_context.initialize(null)
                 .addCallback(new SubQueryCB(sub_context))
                 .addErrback(new ErrorCB());
@@ -632,7 +657,15 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
         sub_results.add(next);
       }
       // TODO - do we need to wrap this?
-      ReadCacheQueryPipelineContext.this.onNext(next);
+      //ReadCacheQueryPipelineContext.this.onNext(next);
+      for (final QuerySink sink : sinks) {
+        try {
+          sink.onNext(next);
+        } catch (Throwable e) {
+          LOG.error("Exception thrown passing results to sink: " + sink, e);
+          // TODO - should we kill the query here?
+        }
+      }
 //      if (next instanceof ResultWrapper) {
 //        ((ResultWrapper) next).closeWrapperOnly();
 //      }
