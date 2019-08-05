@@ -13,6 +13,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Map.Entry;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -60,7 +63,8 @@ import net.opentsdb.utils.DateTime;
 import net.opentsdb.utils.JSON;
 
 public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSerdesFactory {
-
+  private static final Logger LOG = LoggerFactory.getLogger(JsonCacheSerdes.class);
+  
   @Override
   public byte[] serialize(Collection<QueryResult> results) {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -146,9 +150,10 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
     Map<String, CachedQueryResult> map = Maps.newHashMap();
     try {
       JsonNode results = JSON.getMapper().readTree(data);
-    
+      results = results.get("results");
       for (final JsonNode result : results) {
-        CachedQueryResult r = new HttpQueryV3Result(null, result, null);
+        System.out.println("       &&&&& READ RESULT: " + result);
+        CachedQueryResult r = new JsonV3Result(null, result, null);
         map.put(r.source().config().getId() + ":" + r.dataSource(), r);
       }
     } catch (IOException e) {
@@ -758,7 +763,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
     json.writeStringField("application", statusValue.application());
   }
   
-  public class HttpQueryV3Result implements CachedQueryResult {
+  public class JsonV3Result implements CachedQueryResult {
 
     /** The node that owns us. */
     private QueryNode node;
@@ -788,7 +793,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
      * @param node The non-null parent node.
      * @param root The non-null root node.
      */
-    HttpQueryV3Result(final QueryNode node, 
+    JsonV3Result(final QueryNode node, 
                       final JsonNode root, 
                       final RollupConfig rollup_config) {
       this(node, root, rollup_config, null);
@@ -801,7 +806,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
      * @param root The root node. Cannot be null if the exception is null.
      * @param exception An optional exception.
      */
-    HttpQueryV3Result(final QueryNode node, 
+    JsonV3Result(final QueryNode node, 
                       final JsonNode root, 
                       final RollupConfig rollup_config,
                       final Exception exception) {
@@ -1485,9 +1490,243 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
   }
 
   @Override
-  public byte[][] serialize(int[] timestamps, byte[][] keys,
-      Collection<QueryResult> results) {
-    // TODO Auto-generated method stub
-    return null;
+  public byte[][] serialize(final int[] timestamps, 
+                            final byte[][] keys,
+                            final Collection<QueryResult> results) {
+    final byte[][] cache_data = new byte[timestamps.length][];
+    QR[] serializers = new QR[results.size()];
+    int i = 0;
+    for (final QueryResult result : results) {
+      serializers[i++] = new QR(result);
+    }
+    
+    for (i = 0; i < timestamps.length; i++) {
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      JsonGenerator json;
+      try {
+        json = JSON.getFactory().createGenerator(baos);
+        json.writeStartObject();
+        json.writeArrayFieldStart("results");
+        
+        int start = timestamps[i];
+        int end = 0;
+        if (i + 1 >= timestamps.length) {
+          long delta = (long) timestamps[i] - (long) timestamps[i - 1];
+          end = (int) (start + delta);
+        } else {
+          end = timestamps[i + 1];
+        }
+        for (int x = 0; x < serializers.length; x++) {
+          serializers[x].serialize(json, start, end);
+        }
+        
+        json.writeEndArray();
+        json.writeEndObject();
+        json.close();
+        cache_data[i] = baos.toByteArray();
+        System.out.println("   SERDES: " + new String(cache_data[i]));
+      } catch (Throwable t) {
+        LOG.error("WTF?", t);
+      }
+    }
+    
+    return cache_data;
+  }
+  
+  class QR {
+    TimeSeries[] series;
+    TypedTimeSeriesIterator[] iterators;
+    TimeSeriesValue<? extends TimeSeriesDataType>[] values;
+    QueryResult result;
+    
+    QR(QueryResult result) {
+      this.result = result;
+      final int size = result.timeSeries().size();
+      series = new TimeSeries[size];
+      iterators = new TypedTimeSeriesIterator[size];
+      values = new TimeSeriesValue[size]; 
+      
+      int i = 0;
+      for (final TimeSeries ts : result.timeSeries()) {
+        series[i] = ts;
+        // TODO - temp, just the first
+        iterators[i] = ts.iterators().iterator().next();
+        if (iterators[i].hasNext()) {
+          values[i] = (TimeSeriesValue<? extends TimeSeriesDataType>) iterators[i].next();
+        }
+        i++;
+      }
+    }
+    
+    void clear(int index) {
+      values[index] = null;
+      iterators[index] = null;
+      series[index].close();
+      series[index] = null;
+    }
+    
+    void serialize(final JsonGenerator json, final int start, final int end) throws IOException {
+      json.writeStartObject();
+      json.writeStringField("source", result.source().config().getId() + ":" + result.dataSource());
+      
+      TimeStamp last_value = new SecondTimeStamp(0);
+      if (result.timeSpecification() != null) {
+        json.writeObjectFieldStart("timeSpecification");
+        // TODO - ms, second, nanos, etc
+        json.writeNumberField("start", start);
+        json.writeNumberField("end", end);
+        json.writeStringField("intervalISO", result.timeSpecification().interval() != null ?
+            result.timeSpecification().interval().toString() : "null");
+        json.writeStringField("interval", result.timeSpecification().stringInterval());
+        //json.writeNumberField("intervalNumeric", result.timeSpecification().interval().get(result.timeSpecification().units()));
+        if (result.timeSpecification().timezone() != null) {
+          json.writeStringField("timeZone", result.timeSpecification().timezone().toString());
+        }
+        json.writeStringField("units", result.timeSpecification().units() != null ?
+            result.timeSpecification().units().toString() : "null");
+        json.writeEndObject();
+      }
+      
+      // data
+      json.writeArrayFieldStart("data");
+      
+      // loop de loop
+      for (int i = 0; i < iterators.length; i++) {
+        if (values[i] == null) {
+          System.out.println("    NULL value");
+          continue;
+        }
+        
+        // no data for this segment, skip it.
+        if (values[i].timestamp().epoch() > end) {
+          System.out.println("       timestamp > end");
+          continue;
+        }
+        
+        if (values[i].timestamp().epoch() < start && iterators[i].getType() != NumericArrayType.TYPE) {
+          while (values[i] != null && values[i].timestamp().epoch() < start) {
+            if (iterators[i].hasNext()) {
+              values[i] = (TimeSeriesValue<? extends TimeSeriesDataType>) iterators[i].next();
+            } else {
+              clear(i);
+            }
+          }
+        }
+        
+        // null check again... sniff
+        if (values[i] == null) {
+          System.out.println("       failed second null.....");
+          continue;
+        }
+        
+        System.out.println("       TYPE: " + iterators[i].getType());
+        boolean wrote_data = false;
+        // got something to write!
+        if (iterators[i].getType() == NumericType.TYPE) {
+          if (result.timeSpecification() != null) {
+            StringBuilder buf = new StringBuilder();
+            int z = 0;
+            long delta = (long) start - result.timeSpecification().start().epoch();
+            long interval = result.timeSpecification().interval().get(ChronoUnit.SECONDS);
+            int array_ts = start;
+            while (array_ts < end) {
+              if (values[i].timestamp().epoch() == array_ts) {
+                if (z++ > 0) {
+                  buf.append(",");
+                }
+                if (((NumericType) values[i].value()).isInteger()) {
+                  wrote_data = true;
+                  last_value.update(values[i].timestamp());
+                  buf.append(Long.toString(((NumericType) values[i].value()).longValue()));
+                } else {
+                  if (!Double.isNaN(((NumericType) values[i].value()).doubleValue())) {
+                    wrote_data = true;
+                    last_value.update(values[i].timestamp());
+                  }
+                  buf.append(Double.toString(((NumericType) values[i].value()).doubleValue()));
+                }
+                if (iterators[i].hasNext()) {
+                  values[i] = (TimeSeriesValue<? extends TimeSeriesDataType>) iterators[i].next();
+                } else {
+                  clear(i);
+                }
+              } else {
+                // fill
+                if (z++ > 0) {
+                  buf.append(",");
+                }
+                buf.append("\"NaN\"");
+              }
+              array_ts += interval;
+            }
+            
+            if (wrote_data) {
+              json.writeStartObject();
+              json.writeArrayFieldStart("NumericType");
+              json.writeRaw(buf.toString());
+              json.writeEndArray();
+            }
+          } else {
+            // regular
+            
+          }
+        } else if (iterators[i].getType() == NumericArrayType.TYPE) {
+          // offset
+//          long delta = (long) start - result.timeSpecification().start().epoch();
+//          long interval = result.timeSpecification().interval().get(ChronoUnit.SECONDS);
+//          int offset = (int) (delta / interval);
+//          int array_ts = start;
+//          if (((NumericArrayType) values[i].value()).isInteger()) {
+//            long[] data = ((NumericArrayType) values[i].value()).longArray();
+//            wrote_data = true;
+//            json.writeStartObject();
+//            json.writeArrayFieldStart("NumericType");
+//            while (array_ts < end) {
+//              json.writeNumber(data[offset++]);
+//              array_ts += (int) interval;
+//            }
+//            json.writeEndArray();
+//          } else {
+//            double[] data = ((NumericArrayType) values[i].value()).doubleArray();
+//            StringBuilder buf = new StringBuilder();
+//            int z = 0;
+//            while (array_ts < end) {
+//              if (z++ > 0) {
+//                buf.append(",");
+//              }
+//              if (!Double.isNaN(data[offset])) {
+//                wrote_data = true;
+//              }
+//              buf.append(Double.toString(data[offset++]));
+//              array_ts += (int) interval;
+//            }
+//            
+//            if (wrote_data) {
+//              json.writeStartObject();
+//              json.writeArrayFieldStart("NumericType");
+//              json.writeRaw(buf.toString());
+//              json.writeEndArray();
+//            }
+//          }
+        }
+        
+        if (wrote_data) {
+          json.writeStringField("metric", 
+              ((TimeSeriesStringId) series[i].id()).metric());
+          json.writeObjectFieldStart("tags");
+          for (final Entry<String, String> entry : ((TimeSeriesStringId) series[i].id()).tags().entrySet()) {
+            json.writeStringField(entry.getKey(), entry.getValue());
+          }
+          json.writeEndObject();
+          json.writeEndObject();
+        }
+        
+      } // end serdes loop
+      
+      
+      json.writeEndArray();  // end of data
+      json.writeNumberField("lastValueTimestamp", last_value.epoch());
+      json.writeEndObject(); // end of result
+    }
   }
 }

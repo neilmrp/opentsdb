@@ -185,29 +185,8 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
       final byte[][] keys, 
       final CacheCB callback, 
       final Span upstream_span) {
-    int i = 0;
-    for (final byte[] key : keys) {
-      System.out.println("            i: " + i++);
-//      if (i++ == 2) {
-//        // TEMPORARY HACK
-//        callback.onCacheResult(new CacheQueryResult() {
-//
-//          @Override
-//          public byte[] key() {
-//            return key;
-//          }
-//
-//          @Override
-//          public Map<String, QueryResult> results() {
-//            return serdes.deserialize(null);
-//          }
-//          
-//          
-//        });
-//        continue;
-//      }
-//      
-      final ByteArrayKey cache_key = new ByteArrayKey(key);
+    for (int i = 0; i < keys.length; i++) {
+      final ByteArrayKey cache_key = new ByteArrayKey(keys[i]);
       ExpiringValue value = cache.getIfPresent(cache_key);
       if (value != null) { 
         if (value.expired()) {
@@ -224,7 +203,19 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
       
       
       class CQR implements CacheQueryResults {
-
+        final byte[] key;
+        final Map<String, CachedQueryResult> results;
+        CQR(final int idx) {
+          key = keys[idx];
+          if (final_value == null) {
+            results = null;
+          } else if (final_value.value == null) {
+            results = Collections.emptyMap();
+          } else {
+            results = serdes.deserialize(final_value.value);
+          }
+        }
+        
         @Override
         public byte[] key() {
           return key;
@@ -232,13 +223,7 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
 
         @Override
         public Map<String, CachedQueryResult> results() {
-          if (final_value == null) {
-            return null;
-          }
-          if (final_value.value == null) {
-            return Collections.emptyMap();
-          }
-          return serdes.deserialize(final_value.value);
+          return results;
         }
 
         @Override
@@ -248,7 +233,7 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
         }
       }
       
-      callback.onCacheResult(new CQR());
+      callback.onCacheResult(new CQR(i));
       
     }
   }
@@ -348,7 +333,7 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
         continue;
       }
       cache.put(new ByteArrayKey(keys[i]), 
-          new ExpiringValue(data[i], expirations[i], units));
+          new ExpiringValue(data[i], Integer.MAX_VALUE/*expirations[i]*/, units));
       if (data[i] != null) {
         size.addAndGet(data[i].length);
       }
