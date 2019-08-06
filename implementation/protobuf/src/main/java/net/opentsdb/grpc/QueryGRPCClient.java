@@ -34,29 +34,29 @@ import net.opentsdb.utils.JSON;
 
 /**
  * The client that communicates with GRPC and passes data upstream.
- * 
+ *
  * @since 3.0
  */
-public class QueryGRPCClient extends AbstractQueryNode implements 
-    TimeSeriesDataSource, 
+public class QueryGRPCClient extends AbstractQueryNode implements
+    TimeSeriesDataSource,
     StreamObserver<QueryResultPB.QueryResult> {
 
   /** The context. */
   private final QueryPipelineContext context;
-  
+
   /** The query source config. */
   private final TimeSeriesDataSourceConfig config;
-  
+
   /** The factory we came from. */
   private final QueryGRPCClientFactory factory;
-  
+
   /**
    * Default ctor.
    * @param factory The non-null factory we came from.
    * @param context The non-null context we're a part of.
    * @param config The non-null config to parse and send over GRPC.
    */
-  public QueryGRPCClient(final QueryGRPCClientFactory factory, 
+  public QueryGRPCClient(final QueryGRPCClientFactory factory,
                          final QueryPipelineContext context,
                          final TimeSeriesDataSourceConfig config) {
     super(null, context);
@@ -76,7 +76,7 @@ public class QueryGRPCClient extends AbstractQueryNode implements
   }
 
   @Override
-  public void onComplete(final QueryNode downstream, 
+  public void onComplete(final QueryNode downstream,
                          final long final_sequence,
                          final long total_sequences) {
     completeUpstream(final_sequence, total_sequences);
@@ -86,14 +86,13 @@ public class QueryGRPCClient extends AbstractQueryNode implements
   public void onNext(final QueryResult next) {
     sendUpstream(next);
   }
-  
+
   @Override
   public void onNext(final QueryResultPB.QueryResult next) {
     try {
       final PBufQueryResult result = new PBufQueryResult(
-          factory.serdes_factory, 
-          this, 
-          null, 
+          factory.serdes_factory,
+          this,
           next);
       onNext(result);
       completeUpstream(0, 0);
@@ -117,20 +116,20 @@ public class QueryGRPCClient extends AbstractQueryNode implements
           .setMode(context.query().getMode())
           .setTimeZone(context.query().getTimezone())
           .setExecutionGraph(
-              config.getPushDownNodes() == null || 
-              config.getPushDownNodes().isEmpty() ? 
-                  Lists.newArrayList(config) : 
+              config.getPushDownNodes() == null ||
+              config.getPushDownNodes().isEmpty() ?
+                  Lists.newArrayList(config) :
                     config.getPushDownNodes())
           .build();
-      
+
       // TODO - tracing
-      TimeSeriesQueryPB.TimeSeriesQuery pb_query = 
+      TimeSeriesQueryPB.TimeSeriesQuery pb_query =
           TimeSeriesQueryPB.TimeSeriesQuery.newBuilder()
             .setQuery(UnsafeByteOperations.unsafeWrap(
                 JSON.serializeToBytes(query)))
             .build();
-      
-      factory.stub().remoteQuery(pb_query, 
+
+      factory.stub().remoteQuery(pb_query,
           (StreamObserver<QueryResultPB.QueryResult>) this);
     } catch (Exception e) {
       sendUpstream(e);
@@ -140,7 +139,7 @@ public class QueryGRPCClient extends AbstractQueryNode implements
   @Override
   public void onCompleted() {
     // TODO Auto-generated method stub
-    
+
   }
 
   @Override

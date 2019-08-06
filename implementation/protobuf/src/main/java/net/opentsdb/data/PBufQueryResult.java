@@ -30,41 +30,38 @@ import net.opentsdb.exceptions.SerdesException;
 import net.opentsdb.query.QueryNode;
 import net.opentsdb.query.QueryResult;
 import net.opentsdb.query.serdes.PBufSerdesFactory;
-import net.opentsdb.query.serdes.SerdesOptions;
 import net.opentsdb.rollup.RollupConfig;
 
 /**
  * Implementation of the {@link QueryResult} interface using Protobuf.
- * 
+ *
  * @since 3.0
  */
 public class PBufQueryResult implements QueryResult {
-  
+
   /** The factory used to serdes data types. */
   private final PBufSerdesFactory factory;
-  
+
   /** The protobuf result. */
   private final QueryResultPB.QueryResult result;
-  
+
   /** The query node that deserialized this data. */
   private final QueryNode node;
-  
+
   /** The optional time specification. */
   private final PBufTimeSpecification time_spec;
-  
+
   /** Series cache. */
   private List<TimeSeries> series;
-  
+
   /**
    * Default ctor.
    * @param factory A non-null factory.
    * @param node A non-null node that owns this data.
-   * @param options A non-null options object.
    * @param stream The input stream to parse.
    */
-  public PBufQueryResult(final PBufSerdesFactory factory, 
-                         final QueryNode node, 
-                         final SerdesOptions options, 
+  public PBufQueryResult(final PBufSerdesFactory factory,
+                         final QueryNode node,
                          final InputStream stream) {
     this.factory = factory;
     this.node = node;
@@ -79,17 +76,15 @@ public class PBufQueryResult implements QueryResult {
       throw new SerdesException("Failed to parse the query results.", e);
     }
   }
-  
+
   /**
    * Ctor from a result.
    * @param factory A non-null factory.
    * @param node A non-null node that owns this data.
-   * @param options A non-null options object.
    * @param result The non-null result to parse.
    */
-  public PBufQueryResult(final PBufSerdesFactory factory, 
-                         final QueryNode node, 
-                         final SerdesOptions options, 
+  public PBufQueryResult(final PBufSerdesFactory factory,
+                         final QueryNode node,
                          final QueryResultPB.QueryResult result) {
     this.factory = factory;
     this.node = node;
@@ -100,7 +95,7 @@ public class PBufQueryResult implements QueryResult {
       time_spec = null;
     }
   }
-  
+
   @Override
   public TimeSpecification timeSpecification() {
     return time_spec;
@@ -110,11 +105,11 @@ public class PBufQueryResult implements QueryResult {
   public Collection<TimeSeries> timeSeries() {
     if (series == null) {
       series = Lists.newArrayListWithCapacity(
-          result.getTimeseriesCount());
-      for (final TimeSeriesPB.TimeSeries time_series : 
-          result.getTimeseriesList()) {
-        series.add(new PBufTimeSeries(node.pipelineContext().tsdb(), 
-            factory, time_series));
+              result.getTimeseriesCount());
+      for (final TimeSeriesPB.TimeSeries time_series :
+              result.getTimeseriesList()) {
+        series.add(new PBufTimeSeries(node.pipelineContext().tsdb(),
+                factory, time_series));
       }
     }
     return series;
@@ -125,13 +120,13 @@ public class PBufQueryResult implements QueryResult {
     // TODO - implement
     return null;
   }
-  
+
   @Override
   public Throwable exception() {
     // TODO - implement
     return null;
   }
-  
+
   @Override
   public long sequenceId() {
     return result.getSequenceId();
@@ -146,7 +141,7 @@ public class PBufQueryResult implements QueryResult {
   public String dataSource() {
     return result.getDataSource();
   }
-  
+
   @Override
   public TypeToken<? extends TimeSeriesId> idType() {
     return Const.TS_STRING_ID;
@@ -156,13 +151,13 @@ public class PBufQueryResult implements QueryResult {
   public ChronoUnit resolution() {
     return ChronoUnit.values()[result.getResolution()];
   }
-  
+
   @Override
   public RollupConfig rollupConfig() {
     // TODO Auto-generated method stub
     return null;
   }
-  
+
   @Override
   public void close() {
     // no-op

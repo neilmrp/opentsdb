@@ -54,7 +54,7 @@ import net.opentsdb.utils.Bytes;
  * If the resolution in the query results is lower than the resolution of
  * the timestamps and one or more timestamps would be encoded on the same
  * offset a {@link SerdesException} is thrown during serialization.
- * 
+ *
  * @since 3.0
  */
 public class PBufNumericSummaryTimeSeriesSerdes implements PBufIteratorSerdes {
@@ -63,14 +63,13 @@ public class PBufNumericSummaryTimeSeriesSerdes implements PBufIteratorSerdes {
   public TypeToken<? extends TimeSeriesDataType> type() {
     return NumericSummaryType.TYPE;
   }
-  
+
   @Override
-  public void serialize(final Builder ts_builder, 
+  public void serialize(final Builder ts_builder,
                         final QueryContext context,
-                        final SerdesOptions options,
                         final QueryResult result,
                         final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator) {
-    ts_builder.addData(serialize(context, options, result, iterator));
+    ts_builder.addData(serialize(context, result, iterator));
   }
 
   @Override
@@ -81,149 +80,307 @@ public class PBufNumericSummaryTimeSeriesSerdes implements PBufIteratorSerdes {
   /**
    * Encodes the given iterator.
    * @param context A non-null query context.
-   * @param options Options, ignored.
    * @param result A non-null result.
    * @param iterator A non-null iterator.
    * @return A data protobuf object.
    */
   TimeSeriesData serialize(final QueryContext context,
-                           final SerdesOptions options,
                            final QueryResult result,
                            final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator) {
     final long span;
     switch(result.resolution()) {
-    case NANOS:
-    case MICROS:
-      long seconds = context.query().endTime().epoch() - 
-          context.query().startTime().epoch();
-      long ns = context.query().endTime().nanos() - 
-          context.query().startTime().nanos();
-      span = (seconds * 1000L * 1000L * 1000L) + ns;
-      break;
-    case MILLIS:
-      span = context.query().endTime().epoch() - 
-          context.query().startTime().epoch();
-      break;
-    default:
-      span = context.query().endTime().epoch() - 
-          context.query().startTime().epoch();
+      case NANOS:
+      case MICROS:
+        long seconds = context.query().endTime().epoch() -
+                context.query().startTime().epoch();
+        long ns = context.query().endTime().nanos() -
+                context.query().startTime().nanos();
+        span = (seconds * 1000L * 1000L * 1000L) + ns;
+        break;
+      case MILLIS:
+        span = context.query().endTime().epoch() -
+                context.query().startTime().epoch();
+        break;
+      default:
+        span = context.query().endTime().epoch() -
+                context.query().startTime().epoch();
     }
     byte encode_on = NumericCodec.encodeOn(span, NumericCodec.LENGTH_MASK);
-    
-    final Map<Integer, ByteArrayOutputStream> summary_streams = 
-        Maps.newHashMap();
+
+    final Map<Integer, ByteArrayOutputStream> summary_streams =
+            Maps.newHashMap();
     try {
       long previous_offset = -1;
       while (iterator.hasNext()) {
         @SuppressWarnings("unchecked")
-        final TimeSeriesValue<NumericSummaryType> value = 
-            (TimeSeriesValue<NumericSummaryType>) iterator.next();
+        final TimeSeriesValue<NumericSummaryType> value =
+                (TimeSeriesValue<NumericSummaryType>) iterator.next();
         if (value.timestamp().compare(Op.LT, context.query().startTime())) {
           continue;
         }
         if (value.timestamp().compare(Op.GT, context.query().endTime())) {
           break;
         }
-        
-        long current_offset = offset(context.query().startTime(), 
-            value.timestamp(), result.resolution());
+
+        long current_offset = offset(context.query().startTime(),
+                value.timestamp(), result.resolution());
         if (current_offset == previous_offset) {
-          throw new SerdesException("With results set to a resolution of " 
-              + result.resolution() + " one or more data points with "
-              + "duplicate timestamps would be written at offset: " 
-              + current_offset);
+          throw new SerdesException("With results set to a resolution of "
+                  + result.resolution() + " one or more data points with "
+                  + "duplicate timestamps would be written at offset: "
+                  + current_offset);
         }
         previous_offset = current_offset;
-        
+
         if (value.value() == null) {
           // so, if we have already populated our summaries with nulls we
           // can fill with nulls. But at the start of the iteration we
           // don't know what to fill with.
-          for (final Entry<Integer, ByteArrayOutputStream> entry : 
-            summary_streams.entrySet()) {
+          for (final Entry<Integer, ByteArrayOutputStream> entry :
+                  summary_streams.entrySet()) {
             ByteArrayOutputStream baos = entry.getValue();
             final byte flags = NumericCodec.FLAG_FLOAT;
             baos.write(Bytes.fromLong(
-                (current_offset << NumericCodec.FLAG_BITS) | flags),
-                  8 - encode_on, encode_on);
+                    (current_offset << NumericCodec.FLAG_BITS) | flags),
+                    8 - encode_on, encode_on);
           }
           continue;
         }
-        
+
         for (final int summary : value.value().summariesAvailable()) {
           ByteArrayOutputStream baos = summary_streams.get(summary);
           if (baos == null) {
             baos = new ByteArrayOutputStream();
             summary_streams.put(summary, baos);
           }
-          
+
           NumericType val = value.value().value(summary);
           if (val == null) {
             // length of 0 + float flag == null value, so nothing following
             final byte flags = NumericCodec.FLAG_FLOAT;
             baos.write(Bytes.fromLong(
-                (current_offset << NumericCodec.FLAG_BITS) | flags),
-                  8 - encode_on, encode_on);
+                    (current_offset << NumericCodec.FLAG_BITS) | flags),
+                    8 - encode_on, encode_on);
           } else if (val.isInteger()) {
             final byte[] vle = NumericCodec.vleEncodeLong(val.longValue());
             final byte flags = (byte) (vle.length - 1);
             baos.write(Bytes.fromLong(
-                (current_offset << NumericCodec.FLAG_BITS) | flags),
-                8 - encode_on, encode_on);
+                    (current_offset << NumericCodec.FLAG_BITS) | flags),
+                    8 - encode_on, encode_on);
             baos.write(vle);
           } else {
             final double v = val.doubleValue();
-            final byte[] vle = NumericType.fitsInFloat(v) ? 
-                Bytes.fromInt(Float.floatToIntBits((float) v)) :
-                  Bytes.fromLong(Double.doubleToLongBits(v));
+            final byte[] vle = NumericType.fitsInFloat(v) ?
+                    Bytes.fromInt(Float.floatToIntBits((float) v)) :
+                    Bytes.fromLong(Double.doubleToLongBits(v));
             final byte flags = (byte) ((vle.length - 1) | NumericCodec.FLAG_FLOAT);
             baos.write(Bytes.fromLong(
-                (current_offset << NumericCodec.FLAG_BITS) | flags),
-                8 - encode_on, encode_on);
+                    (current_offset << NumericCodec.FLAG_BITS) | flags),
+                    8 - encode_on, encode_on);
             baos.write(vle);
           }
         }
       }
     } catch (IOException e) {
       throw new SerdesException("Unexppected exception serializing "
-          + "iterator: " + iterator, e);
+              + "iterator: " + iterator, e);
     }
-  
-    final NumericSummarySegment.Builder segment_builder = 
-        NumericSummarySegment.newBuilder()
-          .setEncodedOn(encode_on)
-          .setResolution(result.resolution().ordinal());
-    for (final Entry<Integer, ByteArrayOutputStream> entry : 
-        summary_streams.entrySet()) {
+
+    final NumericSummarySegment.Builder segment_builder =
+            NumericSummarySegment.newBuilder()
+                    .setEncodedOn(encode_on)
+                    .setResolution(result.resolution().ordinal());
+    for (final Entry<Integer, ByteArrayOutputStream> entry :
+            summary_streams.entrySet()) {
       segment_builder.addData(NumericSummary.newBuilder()
-          .setSummaryId(entry.getKey())
-          // TODO - can I wrap???
-          .setData(ByteString.copyFrom(entry.getValue().toByteArray())));
+              .setSummaryId(entry.getKey())
+              // TODO - can I wrap???
+              .setData(ByteString.copyFrom(entry.getValue().toByteArray())));
     }
-    
+
     final TimeStampPB.TimeStamp.Builder start = TimeStampPB.TimeStamp.newBuilder()
-        .setEpoch(context.query().startTime().epoch())
-        .setNanos(context.query().startTime().nanos());
+            .setEpoch(context.query().startTime().epoch())
+            .setNanos(context.query().startTime().nanos());
     if (context.query().getTimezone() != null) {
       start.setZoneId(context.query().getTimezone().toString());
     }
-    
+
     final TimeStampPB.TimeStamp.Builder end = TimeStampPB.TimeStamp.newBuilder()
-        .setEpoch(context.query().endTime().epoch())
-        .setNanos(context.query().endTime().nanos());
+            .setEpoch(context.query().endTime().epoch())
+            .setNanos(context.query().endTime().nanos());
     if (context.query().getTimezone() != null) {
       end.setZoneId(context.query().getTimezone().toString());
     }
-    
+
     return TimeSeriesData.newBuilder()
-      .setType(NumericSummaryType.TYPE.getRawType().getName())
-      .addSegments(TimeSeriesDataSegment.newBuilder()
-          .setStart(start)
-          .setEnd(end)
-          .setData(Any.pack(segment_builder.build())))
-      .build();
+            .setType(NumericSummaryType.TYPE.getRawType().getName())
+            .addSegments(TimeSeriesDataSegment.newBuilder()
+                    .setStart(start)
+                    .setEnd(end)
+                    .setData(Any.pack(segment_builder.build())))
+            .build();
   }
-  
+
+
+  @Override
+  public void serializeGivenTimes(final Builder ts_builder,
+                                  final QueryContext context,
+                                  final QueryResult result,
+                                  final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator,
+                                  final TimeStampPB.TimeStamp first,
+                                  final TimeStampPB.TimeStamp last) {
+    ts_builder.addData(serializeGivenTimes(context, result, iterator, first ,last));
+  }
+
+
+  /**
+   * Encodes the given iterator.
+   * @param context A non-null query context.
+   * @param result A non-null result.
+   * @param iterator A non-null iterator.
+   * @return A data protobuf object.
+   */
+  TimeSeriesData serializeGivenTimes(final QueryContext context,
+                                     final QueryResult result,
+                                     final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator,
+                                     final TimeStampPB.TimeStamp first,
+                                     final TimeStampPB.TimeStamp last) {
+    final long span;
+    switch(result.resolution()) {
+      case NANOS:
+      case MICROS:
+        long seconds = last.getEpoch() -
+                first.getEpoch();
+        long ns = last.getNanos() -
+                first.getNanos();
+        span = (seconds * 1000L * 1000L * 1000L) + ns;
+        break;
+      case MILLIS:
+        span = last.getEpoch() -
+                first.getEpoch();
+        break;
+      default:
+        span = last.getEpoch() -
+                first.getEpoch();
+    }
+    byte encode_on = NumericCodec.encodeOn(span, NumericCodec.LENGTH_MASK);
+
+    final Map<Integer, ByteArrayOutputStream> summary_streams =
+            Maps.newHashMap();
+    try {
+      long previous_offset = -1;
+      while (iterator.hasNext()) {
+        @SuppressWarnings("unchecked")
+        final TimeSeriesValue<NumericSummaryType> value =
+                (TimeSeriesValue<NumericSummaryType>) iterator.next();
+        if (value.timestamp().compare(Op.LT, context.query().startTime())) {
+          continue;
+        }
+//        if (value.timestamp().compare(Op.GT, last)) {
+//          break;
+//        }
+
+        long current_offset = offset(first,
+                value.timestamp(), result.resolution());
+        if (current_offset == previous_offset) {
+          throw new SerdesException("With results set to a resolution of "
+                  + result.resolution() + " one or more data points with "
+                  + "duplicate timestamps would be written at offset: "
+                  + current_offset);
+        }
+        previous_offset = current_offset;
+
+        if (value.value() == null) {
+          // so, if we have already populated our summaries with nulls we
+          // can fill with nulls. But at the start of the iteration we
+          // don't know what to fill with.
+          for (final Entry<Integer, ByteArrayOutputStream> entry :
+                  summary_streams.entrySet()) {
+            ByteArrayOutputStream baos = entry.getValue();
+            final byte flags = NumericCodec.FLAG_FLOAT;
+            baos.write(Bytes.fromLong(
+                    (current_offset << NumericCodec.FLAG_BITS) | flags),
+                    8 - encode_on, encode_on);
+          }
+          continue;
+        }
+
+        for (final int summary : value.value().summariesAvailable()) {
+          ByteArrayOutputStream baos = summary_streams.get(summary);
+          if (baos == null) {
+            baos = new ByteArrayOutputStream();
+            summary_streams.put(summary, baos);
+          }
+
+          NumericType val = value.value().value(summary);
+          if (val == null) {
+            // length of 0 + float flag == null value, so nothing following
+            final byte flags = NumericCodec.FLAG_FLOAT;
+            baos.write(Bytes.fromLong(
+                    (current_offset << NumericCodec.FLAG_BITS) | flags),
+                    8 - encode_on, encode_on);
+          } else if (val.isInteger()) {
+            final byte[] vle = NumericCodec.vleEncodeLong(val.longValue());
+            final byte flags = (byte) (vle.length - 1);
+            baos.write(Bytes.fromLong(
+                    (current_offset << NumericCodec.FLAG_BITS) | flags),
+                    8 - encode_on, encode_on);
+            baos.write(vle);
+          } else {
+            final double v = val.doubleValue();
+            final byte[] vle = NumericType.fitsInFloat(v) ?
+                    Bytes.fromInt(Float.floatToIntBits((float) v)) :
+                    Bytes.fromLong(Double.doubleToLongBits(v));
+            final byte flags = (byte) ((vle.length - 1) | NumericCodec.FLAG_FLOAT);
+            baos.write(Bytes.fromLong(
+                    (current_offset << NumericCodec.FLAG_BITS) | flags),
+                    8 - encode_on, encode_on);
+            baos.write(vle);
+          }
+        }
+      }
+    } catch (IOException e) {
+      throw new SerdesException("Unexppected exception serializing "
+              + "iterator: " + iterator, e);
+    }
+
+    final NumericSummarySegment.Builder segment_builder =
+            NumericSummarySegment.newBuilder()
+                    .setEncodedOn(encode_on)
+                    .setResolution(result.resolution().ordinal());
+    for (final Entry<Integer, ByteArrayOutputStream> entry :
+            summary_streams.entrySet()) {
+      segment_builder.addData(NumericSummary.newBuilder()
+              .setSummaryId(entry.getKey())
+              // TODO - can I wrap???
+              .setData(ByteString.copyFrom(entry.getValue().toByteArray())));
+    }
+
+    final TimeStampPB.TimeStamp.Builder start = TimeStampPB.TimeStamp.newBuilder()
+            .setEpoch(first.getEpoch())
+            .setNanos(first.getNanos());
+    if (context.query().getTimezone() != null) {
+      start.setZoneId(context.query().getTimezone().toString());
+    }
+
+    final TimeStampPB.TimeStamp.Builder end = TimeStampPB.TimeStamp.newBuilder()
+            .setEpoch(last.getEpoch())
+            .setNanos(last.getNanos());
+    if (context.query().getTimezone() != null) {
+      end.setZoneId(context.query().getTimezone().toString());
+    }
+
+    return TimeSeriesData.newBuilder()
+            .setType(NumericSummaryType.TYPE.getRawType().getName())
+            .addSegments(TimeSeriesDataSegment.newBuilder()
+                    .setStart(start)
+                    .setEnd(end)
+                    .setData(Any.pack(segment_builder.build())))
+            .build();
+  }
+
+
+
   /**
    * Calculates the offset from the base timestamp at the right resolution.
    * @param base A non-null base time.
@@ -231,18 +388,36 @@ public class PBufNumericSummaryTimeSeriesSerdes implements PBufIteratorSerdes {
    * @param resolution A non-null resolution.
    * @return An offset in the appropriate units.
    */
-  long offset(final TimeStamp base, 
-              final TimeStamp value, 
+  long offset(final TimeStamp base,
+              final TimeStamp value,
               final ChronoUnit resolution) {
     switch(resolution) {
-    case NANOS:
-    case MICROS:
-      long seconds = value.epoch() - base.epoch();
-      return (seconds * 1000L * 1000L * 1000L) + (value.nanos() - base.nanos());
-    case MILLIS:
-      return value.msEpoch() - base.msEpoch();
-    default:
-      return value.epoch() - base.epoch();
+      case NANOS:
+      case MICROS:
+        long seconds = value.epoch() - base.epoch();
+        return (seconds * 1000L * 1000L * 1000L) + (value.nanos() - base.nanos());
+      case MILLIS:
+        return value.msEpoch() - base.msEpoch();
+      default:
+        return value.epoch() - base.epoch();
+    }
+  }
+
+  private long offset(final TimeStampPB.TimeStamp base,
+                      final TimeStamp value,
+                      final ChronoUnit resolution) {
+    final long seconds;
+    switch(resolution) {
+      case NANOS:
+      case MICROS:
+        seconds = value.epoch() - base.getEpoch();
+        return (seconds * 1000L * 1000L * 1000L) + (value.nanos() - base.getNanos());
+      case MILLIS:
+        seconds = value.epoch() - base.getEpoch();
+        return (seconds * 1000L);
+
+      default:
+        return value.epoch() - base.getEpoch();
     }
   }
 }

@@ -23,9 +23,9 @@ import net.opentsdb.data.TimeSeriesValue;
 import net.opentsdb.data.TypedTimeSeriesIterator;
 import net.opentsdb.data.pbuf.TimeSeriesDataPB.TimeSeriesData;
 import net.opentsdb.data.pbuf.TimeSeriesPB;
+import net.opentsdb.data.pbuf.TimeStampPB;
 import net.opentsdb.query.QueryContext;
 import net.opentsdb.query.QueryResult;
-import net.opentsdb.query.serdes.SerdesOptions;
 
 /**
  * An interface for serial/deserializers with Protobuf messages. Each
@@ -33,46 +33,51 @@ import net.opentsdb.query.serdes.SerdesOptions;
  * <p>
  * Note that the serdes modules are called from multiple threads and they
  * most not keep track of any state.
- * 
+ *
  * @since 3.0
  */
 public interface PBufIteratorSerdes {
 
   /** @return The type of data handled by this class. */
   public TypeToken<? extends TimeSeriesDataType> type();
-  
+
   /**
    * The method that serializes the data. A non-null time series builder
-   * is given and the serialization method must create zero or more 
+   * is given and the serialization method must create zero or more
    * segments to be stored in a {@link TimeSeriesDatumIterable} proto that is
    * added to the ts_builder. If there isn't any data for the iterator,
    * just populate the builder with an empty data object for the given
    * type.
-   * 
+   *
    * @param ts_builder A non-null time series Protobuf builder to add to.
    * @param context A query context to pull info from.
-   * @param options A non-null serdes options to pull timestamps and other
    * configs from.
    * @param result The original query result.
    * @param iterator A non-null iterator.
-   * 
+   *
    */
-  public void serialize(final TimeSeriesPB.TimeSeries.Builder ts_builder, 
-                        final QueryContext context, 
-                        final SerdesOptions options, 
+  public void serialize(final TimeSeriesPB.TimeSeries.Builder ts_builder,
+                        final QueryContext context,
                         final QueryResult result,
                         final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator);
-  
+
+  public void serializeGivenTimes(final TimeSeriesPB.TimeSeries.Builder ts_builder,
+                                  final QueryContext context,
+                                  final QueryResult result,
+                                  final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator,
+                                  final TimeStampPB.TimeStamp first,
+                                  final TimeStampPB.TimeStamp last);
+
   /**
    * Returns an iterator over the data serialized in the TimeSeriesData
    * protobuf object.
-   * 
+   *
    * @param series A non-null result to parse.
    * @return A non-null iterator. If the data set doesn't have any data
    * just return an iterator with it's {@link Iterator#hasNext()} returning
    * false.
-   * 
+   *
    */
   public TypedTimeSeriesIterator deserialize(final TimeSeriesData series);
-  
+
 }

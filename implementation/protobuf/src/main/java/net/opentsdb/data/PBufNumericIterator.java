@@ -16,6 +16,7 @@ package net.opentsdb.data;
 
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 
 import com.google.common.base.Strings;
 import com.google.common.reflect.TypeToken;
@@ -31,46 +32,46 @@ import net.opentsdb.storage.schemas.tsdb1x.NumericCodec;
 import net.opentsdb.utils.Bytes;
 
 /**
- * An implementation of the {@link NumericType} from OpenTSDB. The 
+ * An implementation of the {@link NumericType} from OpenTSDB. The
  * protobuf version may have multiple segments so this class will iterate
  * over all of them in order.
- * 
+ *
  * TODO - reverse
- * 
+ *
  * @since 3.0
  */
 public class PBufNumericIterator implements TypedTimeSeriesIterator {
 
   /** The encoded source. */
   private final TimeSeriesData source;
-  
+
   /** The data point updated and returned during iteration. */
   private final MutableNumericValue dp;
-  
+
   /** The current base timestamp of the current segment. */
   private TimeStamp base;
-  
+
   /** The current timestamp, updated during iteration. */
   private TimeStamp current;
-  
+
   /** Current index into the segment list. */
   private int segment_idx = 0;
-  
+
   /** Current index into the data array from a segment. */
   private int idx = 0;
-  
+
   /** Pointer to the current data byte array. */
   private byte[] data;
-  
+
   /** How many bytes the offset is encoded on for the current segment. */
   private byte encode_on;
-  
+
   /** The current segment resolution. */
   private ChronoUnit resolution;
-  
+
   /** The current offset read from the data array. */
   private byte[] offset = new byte[8];
-  
+
   /**
    * Default ctor.
    * @param source A non-null source.
@@ -94,10 +95,14 @@ public class PBufNumericIterator implements TypedTimeSeriesIterator {
     }
     dp = new MutableNumericValue();
   }
-  
+
   @Override
   public boolean hasNext() {
     return idx < data.length && segment_idx <= source.getSegmentsCount();
+  }
+
+  public long getBaseTime() {
+    return base.epoch();
   }
 
   @Override
@@ -111,19 +116,19 @@ public class PBufNumericIterator implements TypedTimeSeriesIterator {
     off = off >> NumericCodec.FLAG_BITS;
     final byte vlen = (byte) ((flags & NumericCodec.LENGTH_MASK) + 1);
     switch (resolution) {
-    case NANOS:
-    case MICROS:
-      long seconds = off / (1000L * 1000L * 1000L);
-      current.update(base.epoch() + seconds, 
-          off - (seconds * 1000L * 1000L * 1000L));
-      break;
-    case MILLIS:
-      current.updateMsEpoch(base.msEpoch() + off);
-      break;
-    default:
-      current.updateEpoch(base.epoch() + off);
+      case NANOS:
+      case MICROS:
+        long seconds = off / (1000L * 1000L * 1000L);
+        current.update(base.epoch() + seconds,
+                off - (seconds * 1000L * 1000L * 1000L));
+        break;
+      case MILLIS:
+        current.updateMsEpoch(base.msEpoch() + off);
+        break;
+      default:
+        current.updateEpoch(base.epoch() + off);
     }
-    
+
     idx += encode_on;
     if ((flags & NumericCodec.FLAG_FLOAT) == NumericCodec.FLAG_FLOAT) {
       if (vlen < 2) {
@@ -136,7 +141,7 @@ public class PBufNumericIterator implements TypedTimeSeriesIterator {
       dp.reset(current, NumericCodec.extractIntegerValue(data, idx, flags));
       idx += vlen;
     }
-    
+
     if (idx >= data.length && segment_idx < source.getSegmentsCount()) {
       // move to next segment
       try {
@@ -145,15 +150,15 @@ public class PBufNumericIterator implements TypedTimeSeriesIterator {
         throw new SerdesException("Failed to load initial segment", e);
       }
     }
-    
+
     return dp;
   }
-  
+
   @Override
   public TypeToken<? extends TimeSeriesDataType> getType() {
     return NumericType.TYPE;
   }
-  
+
   /**
    * Advances to the next segment in the protobuf.
    * @throws InvalidProtocolBufferException If decoding failed.
@@ -163,18 +168,18 @@ public class PBufNumericIterator implements TypedTimeSeriesIterator {
       if (source.getSegments(segment_idx).getData().is(NumericSegment.class)) {
         final TimeSeriesDataSegment segment = source.getSegments(segment_idx);
         final NumericSegment parsed = source.getSegments(segment_idx)
-            .getData().unpack(NumericSegment.class);
+                .getData().unpack(NumericSegment.class);
         if (base == null) {
           base = new ZonedNanoTimeStamp(segment.getStart().getEpoch(),
-              segment.getStart().getNanos(),
-              Strings.isNullOrEmpty(segment.getStart().getZoneId()) ? ZoneId.of("UTC") : 
-                ZoneId.of(segment.getStart().getZoneId()));
+                  segment.getStart().getNanos(),
+                  Strings.isNullOrEmpty(segment.getStart().getZoneId()) ? ZoneId.of("UTC") :
+                          ZoneId.of(segment.getStart().getZoneId()));
         } else {
-          base.update(segment.getStart().getEpoch(), 
-              segment.getStart().getNanos());
+          base.update(segment.getStart().getEpoch(),
+                  segment.getStart().getNanos());
           // TODO - validate same zone. Should be the same
         }
-        
+
         // TODO - see if we can avoid the copy here.
         data = parsed.getData().toByteArray();
         if (data == null || data.length < 1) {
@@ -182,7 +187,13 @@ public class PBufNumericIterator implements TypedTimeSeriesIterator {
           continue;
         }
         encode_on = (byte) parsed.getEncodedOn();
+        // TODO - Fix this hardcoding
         resolution = ChronoUnit.values()[parsed.getResolution()];
+        if (parsed.getResolution() == 2) {
+//          resolution = ChronoUnit.values()[2];
+          encode_on = 4;
+        }
+
         if (current == null) {
           current = base.getCopy(); // just needs to be initialized
         }
@@ -190,8 +201,8 @@ public class PBufNumericIterator implements TypedTimeSeriesIterator {
         idx = 0;
         break;
       } else {
-        throw new SerdesException("Segment was not a NumericSegment: " 
-            + source.getSegments(segment_idx).getData().getTypeUrl());
+        throw new SerdesException("Segment was not a NumericSegment: "
+                + source.getSegments(segment_idx).getData().getTypeUrl());
       }
     }
   }

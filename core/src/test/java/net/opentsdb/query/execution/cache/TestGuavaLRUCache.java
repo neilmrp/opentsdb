@@ -97,7 +97,7 @@ public class TestGuavaLRUCache {
     assertEquals(3, cache.cache().size());
     assertEquals(9, cache.bytesStored());
     
-    assertArrayEquals(new byte[] { 0, 0, 1 }, 
+    assertArrayEquals(new byte[] { 0, 0, 1 },
         cache.fetch(context, new byte[] { 0, 0, 1 }, span).deferred().join());
     assertArrayEquals(new byte[] { 0, 0, 2 }, 
         cache.fetch(context, new byte[] { 0, 0, 2 }, span).deferred().join());

@@ -103,14 +103,14 @@ public class PBufSerdesFactory extends BaseTSDBPlugin implements SerdesFactory {
   public TimeSeriesSerdes newInstance(final QueryContext context,
                                       final SerdesOptions options, 
                                       final OutputStream stream) {
-    return new PBufSerdes(this, context, options, stream);
+    return new PBufSerdes(this, context, stream);
   }
 
   @Override
   public TimeSeriesSerdes newInstance(final QueryContext context,
                                       final SerdesOptions options, 
                                       final InputStream stream) {
-    return new PBufSerdes(this, context, options, stream);
+    return new PBufSerdes(this, context, stream);
   }
 
   @Override
