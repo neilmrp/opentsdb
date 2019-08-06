@@ -16,22 +16,31 @@ import net.opentsdb.data.TimeSeries;
 import net.opentsdb.data.TimeSeriesId;
 import net.opentsdb.data.TimeSpecification;
 import net.opentsdb.data.TimeStamp;
+import net.opentsdb.data.TimeStamp.Op;
 import net.opentsdb.query.QueryNode;
+import net.opentsdb.query.QueryPipelineContext;
 import net.opentsdb.query.QueryResult;
 import net.opentsdb.query.QuerySink;
 import net.opentsdb.rollup.RollupConfig;
+import net.opentsdb.utils.Pair;
 
 public class CombinedResult implements QueryResult, TimeSpecification {
 
   Map<Long, TimeSeries> time_series;
   TimeStamp spec_start;
+  TimeStamp spec_end;
   TimeSpecification spec;
   QueryNode node;
   String data_source;
+  final QueryPipelineContext context;
   final List<QuerySink> sinks;
   final AtomicInteger latch;
   
-  public CombinedResult(final QueryResult[] results, final List<QuerySink> sinks, final AtomicInteger latch) {
+  public CombinedResult(final QueryPipelineContext context,
+                        final QueryResult[] results, 
+                        final List<QuerySink> sinks, 
+                        final AtomicInteger latch) {
+    this.context = context;
     this.sinks = sinks;
     this.latch = latch;
     time_series = Maps.newHashMap();
@@ -41,7 +50,16 @@ public class CombinedResult implements QueryResult, TimeSpecification {
       }
       
       if (spec_start == null && results[i].timeSpecification() != null) {
-        spec_start = results[i].timeSpecification().start();
+        spec_start = context.query().startTime();
+        while (spec_start.compare(Op.LT, context.query().startTime())) {
+          spec_start.add(results[i].timeSpecification().interval());
+        }
+        
+        spec_end = context.query().endTime();
+        while (spec_end.compare(Op.GT, context.query().endTime())) {
+          spec_end.subtract(results[i].timeSpecification().interval());
+        }
+        System.out.println("         SPEC START: " + spec_start.epoch() + "  END: " + spec_end.epoch() + "  DIFF: " + (spec_end.epoch() - spec_start.epoch()));
       }
       
       node = results[i].source();
@@ -56,10 +74,10 @@ public class CombinedResult implements QueryResult, TimeSpecification {
         System.out.println("      ID HASH: " + hash);
         TimeSeries combined = time_series.get(hash);
         if (combined == null) {
-          combined = new CombinedTimeSeries(ts);
+          combined = new CombinedTimeSeries(this, results[i], ts);
           time_series.put(hash, combined);
         } else {
-          ((CombinedTimeSeries) combined).series.add(ts);
+          ((CombinedTimeSeries) combined).series.add(new Pair<>(results[i], ts));
         }
       }
     }
@@ -140,7 +158,7 @@ public class CombinedResult implements QueryResult, TimeSpecification {
 
   @Override
   public TimeStamp end() {
-    return spec.end();
+    return spec_end;
   }
 
   @Override
