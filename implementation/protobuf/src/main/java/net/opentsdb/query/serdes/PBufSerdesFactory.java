@@ -49,7 +49,7 @@ public class PBufSerdesFactory extends BaseTSDBPlugin implements SerdesFactory {
   
   /** The map of types. */
   private final Map<TypeToken<?>, PBufIteratorSerdes> types;
-  
+
   /**
    * Default ctor.
    */
@@ -123,6 +123,8 @@ public class PBufSerdesFactory extends BaseTSDBPlugin implements SerdesFactory {
       throw new IllegalArgumentException("Unable to parse JSON", e);
     }
   }
+
+  public TSDB tsdb() { return this.tsdb; }
 
   @Override
   public String version() {

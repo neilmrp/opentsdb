@@ -17,10 +17,7 @@ package net.opentsdb.query.execution.serdes;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -475,6 +472,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
     boolean was_status = false;
     boolean was_event = false;
     boolean was_event_group = false;
+
     for (final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator : series.iterators()) {
       while (iterator.hasNext()) {
         TimeSeriesValue<? extends TimeSeriesDataType> value = iterator.next();

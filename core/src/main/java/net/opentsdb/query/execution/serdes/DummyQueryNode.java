@@ -7,6 +7,7 @@ import com.google.common.hash.HashCode;
 import com.stumbleupon.async.Deferred;
 
 import net.opentsdb.configuration.Configuration;
+import net.opentsdb.core.TSDB;
 import net.opentsdb.data.PartialTimeSeries;
 import net.opentsdb.query.QueryNode;
 import net.opentsdb.query.QueryNodeConfig;
@@ -17,9 +18,21 @@ import net.opentsdb.stats.Span;
 public class DummyQueryNode implements QueryNode, QueryNodeConfig {
 
   private final String id;
+  private final QueryPipelineContext context;
+
   public DummyQueryNode(final String id) {
     this.id = id;
+    System.out.println("empty constructor");
+    this.context = null;
+
   }
+
+  public DummyQueryNode(final String id, final QueryPipelineContext context) {
+    this.id = id;
+//    System.out.println("context: " + context);
+    this.context = context;
+  }
+
   
   @Override
   public int compareTo(Object o) {
@@ -113,7 +126,7 @@ public class DummyQueryNode implements QueryNode, QueryNodeConfig {
   @Override
   public QueryPipelineContext pipelineContext() {
     // TODO Auto-generated method stub
-    return null;
+    return context;
   }
 
   @Override

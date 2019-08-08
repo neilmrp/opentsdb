@@ -27,6 +27,9 @@ import com.google.common.reflect.TypeToken;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.data.pbuf.TimeSeriesDataPB.TimeSeriesData;
 import net.opentsdb.data.pbuf.TimeSeriesPB;
+import net.opentsdb.data.types.numeric.NumericArrayType;
+import net.opentsdb.data.types.numeric.NumericSummaryType;
+import net.opentsdb.data.types.numeric.NumericType;
 import net.opentsdb.exceptions.SerdesException;
 import net.opentsdb.query.serdes.PBufIteratorSerdes;
 import net.opentsdb.query.serdes.PBufSerdesFactory;
@@ -69,13 +72,29 @@ public class PBufTimeSeries implements TimeSeries {
     this.time_series = time_series;
     data = Maps.newHashMapWithExpectedSize(time_series.getDataCount());
     for (final TimeSeriesData data : time_series.getDataList()) {
-      final TypeToken<? extends TimeSeriesDataType> type = 
-          tsdb.getRegistry().getType(data.getType());
+//      System.out.println("tsdb: " + tsdb);
+//      System.out.println("registry: " + tsdb.getRegistry());
+//      System.out.println("type: " + tsdb.getRegistry().getType(data.getType()));
+
+//      System.out.println("data type: " + data.getType());
+//      final TypeToken<? extends TimeSeriesDataType> type =
+//              factory.serdesForType(data.getType());
+
+//      final TypeToken<? extends TimeSeriesDataType> type =
+//          tsdb.getRegistry().getType(data.getType());
+      final String type = data.getType();
       if (type == null) {
         throw new IllegalArgumentException("No type found for: " 
             + data.getType());
       }
-      this.data.put(type, data);
+
+      this.data.put(NumericArrayType.TYPE, data);
+//      if (type.equals("net.opentsdb.data.types.numeric.NumericType")) {
+//        this.data.put(NumericType.TYPE, data);
+//      }
+//      else if (type.equals("net.opentsdb.data.types.numeric.NumericSummaryType")) {
+//        this.data.put(NumericSummaryType.TYPE, data);
+//      }
     }
   }
   
@@ -95,6 +114,9 @@ public class PBufTimeSeries implements TimeSeries {
       return Optional.empty();
     }
     PBufIteratorSerdes serdes = factory.serdesForType(type);
+    if (serdes == null && type.equals(NumericArrayType.TYPE)) {
+      serdes = factory.serdesForType(NumericType.TYPE);
+    }
     if (serdes == null) {
       throw new SerdesException("Had data but unable to find a "
           + "deserializer for the type: " + type);
@@ -110,6 +132,9 @@ public class PBufTimeSeries implements TimeSeries {
     for (final Entry<TypeToken<? extends TimeSeriesDataType>, TimeSeriesData> entry : 
           data.entrySet()) {
       PBufIteratorSerdes serdes = factory.serdesForType(entry.getKey());
+      if (serdes == null && entry.getKey().equals(NumericArrayType.TYPE)) {
+        serdes = factory.serdesForType(NumericType.TYPE);
+      }
       if (serdes == null) {
         throw new SerdesException("Had data but unable to find a "
             + "deserializer for the type: " + entry.getKey());

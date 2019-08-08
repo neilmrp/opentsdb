@@ -253,6 +253,7 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
     /* TODO */ 
     long[] expirations = new long[keys.length];
     Arrays.fill(expirations, Long.MAX_VALUE);
+
     cache(keys, serdes.serialize(timestamps, keys, results), expirations, TimeUnit.MILLISECONDS, null);
     return null;
   }

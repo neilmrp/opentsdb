@@ -40,7 +40,7 @@ public class CombinedTimeSeries implements TimeSeries {
       TypeToken<? extends TimeSeriesDataType> type) {
     if (series.get(0).getValue().types().contains(type)) {
       if (type == NumericType.TYPE) {
-        //return Optional.of(new CombinedNumeric(series));
+//        return Optional.of(new CombinedNumeric(series));
       } else if (type == NumericArrayType.TYPE) {
         return Optional.of(new CombinedArray(combined, series));
       } else if (type == NumericSummaryType.TYPE) {

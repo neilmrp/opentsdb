@@ -24,11 +24,14 @@ import com.google.common.collect.Lists;
 import com.google.common.reflect.TypeToken;
 
 import net.opentsdb.common.Const;
+import net.opentsdb.core.TSDB;
 import net.opentsdb.data.pbuf.QueryResultPB;
 import net.opentsdb.data.pbuf.TimeSeriesPB;
 import net.opentsdb.exceptions.SerdesException;
 import net.opentsdb.query.QueryNode;
 import net.opentsdb.query.QueryResult;
+import net.opentsdb.query.execution.serdes.DummyQueryContext;
+import net.opentsdb.query.execution.serdes.DummyQueryNode;
 import net.opentsdb.query.serdes.PBufSerdesFactory;
 import net.opentsdb.rollup.RollupConfig;
 
@@ -64,7 +67,8 @@ public class PBufQueryResult implements QueryResult {
                          final QueryNode node,
                          final InputStream stream) {
     this.factory = factory;
-    this.node = node;
+    this.node = node == null ? new DummyQueryNode(factory.id(), new DummyQueryContext(factory.tsdb())) : node;
+
     try {
       result = QueryResultPB.QueryResult.parseFrom(stream);
       if (result.hasTimeSpecification()) {
@@ -87,8 +91,10 @@ public class PBufQueryResult implements QueryResult {
                          final QueryNode node,
                          final QueryResultPB.QueryResult result) {
     this.factory = factory;
-    this.node = node;
+    this.node = node == null ? new DummyQueryNode(factory.id(), new DummyQueryContext(factory.tsdb())) : node;
+//    System.out.println("pbuf query result tsdb: " + factory.tsdb());
     this.result = result;
+
     if (result.hasTimeSpecification()) {
       time_spec = new PBufTimeSpecification(result.getTimeSpecification());
     } else {
@@ -108,6 +114,9 @@ public class PBufQueryResult implements QueryResult {
               result.getTimeseriesCount());
       for (final TimeSeriesPB.TimeSeries time_series :
               result.getTimeseriesList()) {
+//        System.out.println("node: " + node);
+//        System.out.println("pipeline: " + node.pipelineContext());
+//        System.out.println("tsdb: " + node.pipelineContext().tsdb());
         series.add(new PBufTimeSeries(node.pipelineContext().tsdb(),
                 factory, time_series));
       }
