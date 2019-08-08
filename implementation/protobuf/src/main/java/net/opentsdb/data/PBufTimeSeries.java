@@ -88,13 +88,13 @@ public class PBufTimeSeries implements TimeSeries {
             + data.getType());
       }
 
-      this.data.put(NumericArrayType.TYPE, data);
-//      if (type.equals("net.opentsdb.data.types.numeric.NumericType")) {
-//        this.data.put(NumericType.TYPE, data);
-//      }
-//      else if (type.equals("net.opentsdb.data.types.numeric.NumericSummaryType")) {
-//        this.data.put(NumericSummaryType.TYPE, data);
-//      }
+//      this.data.put(NumericArrayType.TYPE, data);
+      if (type.equals("net.opentsdb.data.types.numeric.NumericType")) {
+        this.data.put(NumericType.TYPE, data);
+      }
+      else if (type.equals("net.opentsdb.data.types.numeric.NumericSummaryType")) {
+        this.data.put(NumericSummaryType.TYPE, data);
+      }
     }
   }
   
@@ -114,9 +114,9 @@ public class PBufTimeSeries implements TimeSeries {
       return Optional.empty();
     }
     PBufIteratorSerdes serdes = factory.serdesForType(type);
-    if (serdes == null && type.equals(NumericArrayType.TYPE)) {
-      serdes = factory.serdesForType(NumericType.TYPE);
-    }
+//    if (serdes == null && type.equals(NumericArrayType.TYPE)) {
+//      serdes = factory.serdesForType(NumericType.TYPE);
+//    }
     if (serdes == null) {
       throw new SerdesException("Had data but unable to find a "
           + "deserializer for the type: " + type);
@@ -132,9 +132,9 @@ public class PBufTimeSeries implements TimeSeries {
     for (final Entry<TypeToken<? extends TimeSeriesDataType>, TimeSeriesData> entry : 
           data.entrySet()) {
       PBufIteratorSerdes serdes = factory.serdesForType(entry.getKey());
-      if (serdes == null && entry.getKey().equals(NumericArrayType.TYPE)) {
-        serdes = factory.serdesForType(NumericType.TYPE);
-      }
+//      if (serdes == null && entry.getKey().equals(NumericArrayType.TYPE)) {
+//        serdes = factory.serdesForType(NumericType.TYPE);
+//      }
       if (serdes == null) {
         throw new SerdesException("Had data but unable to find a "
             + "deserializer for the type: " + entry.getKey());

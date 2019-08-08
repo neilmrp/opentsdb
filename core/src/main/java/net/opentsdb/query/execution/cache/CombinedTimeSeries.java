@@ -38,9 +38,10 @@ public class CombinedTimeSeries implements TimeSeries {
   @Override
   public Optional<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> iterator(
       TypeToken<? extends TimeSeriesDataType> type) {
+    System.out.println(" !!!!!!!!!! ASKING FOR: " + type);
     if (series.get(0).getValue().types().contains(type)) {
       if (type == NumericType.TYPE) {
-//        return Optional.of(new CombinedNumeric(series));
+        return Optional.of(new CombinedNumeric(combined, series));
       } else if (type == NumericArrayType.TYPE) {
         return Optional.of(new CombinedArray(combined, series));
       } else if (type == NumericSummaryType.TYPE) {
@@ -56,7 +57,7 @@ public class CombinedTimeSeries implements TimeSeries {
         Lists.newArrayList();
     TypeToken<? extends TimeSeriesDataType> type = series.get(0).getValue().types().iterator().next();
     if (type == NumericType.TYPE) {
-      //iterators.add(new CombinedNumeric(series));
+      iterators.add(new CombinedNumeric(combined, series));
     } else if (type == NumericArrayType.TYPE) {
       iterators.add(new CombinedArray(combined, series));
     } else if (type == NumericSummaryType.TYPE) {
