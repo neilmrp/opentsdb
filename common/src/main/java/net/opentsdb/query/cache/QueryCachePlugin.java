@@ -66,10 +66,12 @@ public interface QueryCachePlugin {
   
   public Deferred<Void> cache(final int timestamp,
                               final byte[] key,
+                              final long expiration,
                               final Collection<QueryResult> results);
   
   public Deferred<Void> cache(final int[] timestamps,
                               final byte[][] keys,
+                              final long[] expirations,
                               final Collection<QueryResult> results);
 //  
 //  /**

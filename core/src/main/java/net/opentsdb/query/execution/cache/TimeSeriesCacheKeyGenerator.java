@@ -37,18 +37,24 @@ public abstract class TimeSeriesCacheKeyGenerator extends BaseTSDBPlugin {
                                   final boolean with_timestamps);
   
   /**
-   * Generates an array of cache keys based on the given query and time ranges.
+   * Generates an array of cache keys based on the given query and time ranges 
+   * and populates an array with expirations in milliseconds.
    * This is used for sliced queries where the same query is cut up into smaller
    * time slices.
+   * <b>NOTE:</b> As an ugly hack we expect expirations[0] to contain the 
+   * downsample interval in ms if present.
    * @param query_hash The hash of a query.
    * @param interval An interval for the size of the cached block.
    * @param time_ranges A non-null list of time ranges to generate keys from in
    * epoch seconds.
+   * @param expirations An array of expiration timestamps the method will fill
+   * with durations in milliseconds.
    * @return A non-null and non-empty array of keys.
    */
   public abstract byte[][] generate(final long query_hash,
                                     final String interval,
-                                    final int[] time_ranges);
+                                    final int[] time_ranges,
+                                    final long[] expirations);
   
   /**
    * Generates an expiration duration (not timestamp) in milliseconds when the

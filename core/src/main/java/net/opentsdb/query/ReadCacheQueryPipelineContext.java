@@ -71,6 +71,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
   protected TimeSeriesCacheKeyGenerator key_gen;
   protected boolean tip_query;
   protected byte[][] keys;
+  protected long[] expirations;
   protected ResultOrSubQuery[] results;
   protected AtomicInteger latch;
   protected AtomicInteger hits;
@@ -194,8 +195,9 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
       slices[i] = ts;
       ts += interval_in_seconds;
     }
-    
-    keys = key_gen.generate(context.query().buildHashCode().asLong(), string_interval, slices);
+    expirations = new long[slices.length];
+    expirations[0] = min_interval;
+    keys = key_gen.generate(context.query().buildHashCode().asLong(), string_interval, slices, expirations);
     if (tip_query) {
       keys = Arrays.copyOf(keys, keys.length - 1);
     }
@@ -222,7 +224,8 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
       }
     }
     
-    System.out.println("CACHE SINK CONFIGS......... " + context.sinkConfigs() + "  AND SINKS: " + sinks);
+    System.out.println("CACHE SINK CONFIGS......... " + context.sinkConfigs() 
+      + "  AND SINKS: " + sinks);
     return Deferred.fromResult(null);
   }
 
@@ -413,7 +416,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
           context.tsdb().getQueryThreadPool().submit(new Runnable() {
             @Override
             public void run() {
-              cache.cache(0, keys[x], results[x].map.values());
+              cache.cache(slices[x], keys[x], expirations[x], results[x].map.values());
             }
           }, context);
         }
@@ -630,7 +633,7 @@ public class ReadCacheQueryPipelineContext extends AbstractQueryPipelineContext
           @Override
           public void run() {
             try {
-              cache.cache(slices, keys, sub_results);
+              cache.cache(slices, keys, expirations, sub_results);
             } catch (Throwable t) {
               LOG.error("Failed to cache the data", t);
             } finally {
