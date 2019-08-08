@@ -78,7 +78,6 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
         json.writeStartObject();
         json.writeStringField("source", result.source().config().getId() + ":" + result.dataSource());
         // TODO - array of data sources
-
         // serdes time spec if present
         if (result.timeSpecification() != null) {
           json.writeObjectFieldStart("timeSpecification");
@@ -174,6 +173,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
     boolean was_event = false;
     boolean was_event_group = false;
     for (final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator : series.iterators()) {
+      System.out.println("       ************* SERIES TYPE: " + iterator.getType());
       while (iterator.hasNext()) {
         TimeSeriesValue<? extends TimeSeriesDataType> value = iterator.next();
         if (iterator.getType() == StatusType.TYPE) {
@@ -261,49 +261,49 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       final TimeStamp last_value,
       boolean wrote_values) throws IOException {
     boolean wrote_type = false;
-    if (result.timeSpecification() != null) {
-      // just the values
-      TimeStamp ts = result.timeSpecification().start().getCopy();
-      while (value != null) {
-        if (!wrote_values) {
-          json.writeStartObject();
-          wrote_values = true;
-        }
-        if (!wrote_type) {
-          json.writeArrayFieldStart("NumericType"); // yeah, it's numeric.
-          wrote_type = true;
-        }
-
-        if (value.value() == null) {
-          json.writeNull();
-        } else {
-          if ((value).value().isInteger()) {
-            json.writeNumber(
-                (value).value().longValue());
-            if (ts.compare(Op.GT, last_value)) {
-              last_value.update(ts);
-            }
-          } else {
-            json.writeNumber(
-                (value).value().doubleValue());
-            if (!Double.isNaN(value.value().doubleValue())) {
-              if (ts.compare(Op.GT, last_value)) {
-                last_value.update(ts);
-              }
-            }
-          }
-        }
-
-        if (iterator.hasNext()) {
-          value = (TimeSeriesValue<NumericType>) iterator.next();
-        } else {
-          value = null;
-        }
-        ts.add(result.timeSpecification().interval());
-      }
-      json.writeEndArray();
-      return wrote_type;
-    }
+//    if (result.timeSpecification() != null) {
+//      // just the values
+//      TimeStamp ts = result.timeSpecification().start().getCopy();
+//      while (value != null) {
+//        if (!wrote_values) {
+//          json.writeStartObject();
+//          wrote_values = true;
+//        }
+//        if (!wrote_type) {
+//          json.writeArrayFieldStart("NumericType"); // yeah, it's numeric.
+//          wrote_type = true;
+//        }
+//
+//        if (value.value() == null) {
+//          json.writeNull();
+//        } else {
+//          if ((value).value().isInteger()) {
+//            json.writeNumber(
+//                (value).value().longValue());
+//            if (ts.compare(Op.GT, last_value)) {
+//              last_value.update(ts);
+//            }
+//          } else {
+//            json.writeNumber(
+//                (value).value().doubleValue());
+//            if (!Double.isNaN(value.value().doubleValue())) {
+//              if (ts.compare(Op.GT, last_value)) {
+//                last_value.update(ts);
+//              }
+//            }
+//          }
+//        }
+//
+//        if (iterator.hasNext()) {
+//          value = (TimeSeriesValue<NumericType>) iterator.next();
+//        } else {
+//          value = null;
+//        }
+//        ts.add(result.timeSpecification().interval());
+//      }
+//      json.writeEndArray();
+//      return wrote_type;
+//    }
 
     // timestamp and values
     boolean wrote_local = false;
@@ -1040,6 +1040,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
             types.add(NumericType.TYPE);
           }
         }
+        System.out.println("                   types!!! " + types);
 
         temp = node.get("NumericSummaryType");
         if (temp != null && !temp.isNull()) {
@@ -1066,6 +1067,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       public Optional<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> iterator(
           final TypeToken<? extends TimeSeriesDataType> type) {
         // TODO - cleanup
+        System.out.println("        @@@@@@@@@@@@ WANT TYPE: " + type);
         if (types.contains(type)) {
           TypedTimeSeriesIterator<? extends TimeSeriesDataType> data = null;
           if (type == NumericType.TYPE) {
@@ -1092,6 +1094,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
         // TODO - cleanup
         List<TypedTimeSeriesIterator<? extends TimeSeriesDataType>> results = Lists
             .newArrayListWithExpectedSize(1);
+        System.out.println(" %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ");
         if (types.contains(NumericType.TYPE)) {
           results.add(new NumericData(node.get("NumericType")));
         } else if (types.contains(NumericArrayType.TYPE)) {
@@ -1132,6 +1135,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       private TimeStamp timestamp;
       
       NumericData(final JsonNode data) {
+        System.out.println("          making a json numeric type..........");
         iterator = data.fields();
         timestamp = new SecondTimeStamp(0);
         dp = new MutableNumericValue();
@@ -1569,22 +1573,22 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
       json.writeStringField("source", result.source().config().getId() + ":" + result.dataSource());
       
       TimeStamp last_value = new SecondTimeStamp(0);
-      if (result.timeSpecification() != null) {
-        json.writeObjectFieldStart("timeSpecification");
-        // TODO - ms, second, nanos, etc
-        json.writeNumberField("start", start);
-        json.writeNumberField("end", end);
-        json.writeStringField("intervalISO", result.timeSpecification().interval() != null ?
-            result.timeSpecification().interval().toString() : "null");
-        json.writeStringField("interval", result.timeSpecification().stringInterval());
-        //json.writeNumberField("intervalNumeric", result.timeSpecification().interval().get(result.timeSpecification().units()));
-        if (result.timeSpecification().timezone() != null) {
-          json.writeStringField("timeZone", result.timeSpecification().timezone().toString());
-        }
-        json.writeStringField("units", result.timeSpecification().units() != null ?
-            result.timeSpecification().units().toString() : "null");
-        json.writeEndObject();
-      }
+//      if (result.timeSpecification() != null) {
+//        json.writeObjectFieldStart("timeSpecification");
+//        // TODO - ms, second, nanos, etc
+//        json.writeNumberField("start", start);
+//        json.writeNumberField("end", end);
+//        json.writeStringField("intervalISO", result.timeSpecification().interval() != null ?
+//            result.timeSpecification().interval().toString() : "null");
+//        json.writeStringField("interval", result.timeSpecification().stringInterval());
+//        //json.writeNumberField("intervalNumeric", result.timeSpecification().interval().get(result.timeSpecification().units()));
+//        if (result.timeSpecification().timezone() != null) {
+//          json.writeStringField("timeZone", result.timeSpecification().timezone().toString());
+//        }
+//        json.writeStringField("units", result.timeSpecification().units() != null ?
+//            result.timeSpecification().units().toString() : "null");
+//        json.writeEndObject();
+//      }
       
       // data
       json.writeArrayFieldStart("data");
@@ -1595,6 +1599,8 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
           System.out.println("    NULL value");
           continue;
         }
+        
+        System.out.println("          ts " + values[i].timestamp().epoch() + "  END: " + end);
         
         // no data for this segment, skip it.
         if (values[i].timestamp().epoch() > end) {
@@ -1612,6 +1618,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
           }
         }
         
+        
         // null check again... sniff
         if (values[i] == null) {
           System.out.println("       failed second null.....");
@@ -1622,7 +1629,7 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
         boolean wrote_data = false;
         // got something to write!
         if (iterators[i].getType() == NumericType.TYPE) {
-          if (result.timeSpecification() != null) {
+          if (false && result.timeSpecification() != null) {
             StringBuilder buf = new StringBuilder();
             int z = 0;
             long delta = (long) start - result.timeSpecification().start().epoch();
@@ -1667,7 +1674,28 @@ public class JsonCacheSerdes implements TimeSeriesCacheSerdes, TimeSeriesCacheSe
             }
           } else {
             // regular
-            
+            json.writeStartObject();
+            json.writeObjectFieldStart("NumericType");
+            while (true) {
+              TimeSeriesValue<NumericType> v = (TimeSeriesValue<NumericType>) values[i];
+              if (v.timestamp().epoch() >= end) {
+                break;
+              }
+              
+              if (v.value().isInteger()) {
+                json.writeNumberField(Long.toString(v.timestamp().epoch()), v.value().longValue());
+              } else {
+                json.writeNumberField(Long.toString(v.timestamp().epoch()), v.value().doubleValue());
+              }
+              if (iterators[i].hasNext()) {
+                values[i] = (TimeSeriesValue<? extends TimeSeriesDataType>) iterators[i].next();
+              } else {
+                //clear(i);
+                break;
+              }
+            }
+            json.writeEndObject();
+            wrote_data = true;
           }
         } else if (iterators[i].getType() == NumericArrayType.TYPE) {
           // offset

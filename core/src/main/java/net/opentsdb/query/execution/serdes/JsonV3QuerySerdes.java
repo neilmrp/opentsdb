@@ -476,6 +476,7 @@ public class JsonV3QuerySerdes implements TimeSeriesSerdes {
     boolean was_event = false;
     boolean was_event_group = false;
     for (final TypedTimeSeriesIterator<? extends TimeSeriesDataType> iterator : series.iterators()) {
+      System.out.println("[[ final series type: " + iterator.getType());
       while (iterator.hasNext()) {
         TimeSeriesValue<? extends TimeSeriesDataType> value = iterator.next();
         if (iterator.getType() == StatusType.TYPE) {
