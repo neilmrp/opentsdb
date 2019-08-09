@@ -141,6 +141,7 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
   /** The configured maximum number of objects. */
   private int max_objects; 
   
+  /** The serdes plugin for this cache instance. */
   private TimeSeriesCacheSerdes serdes;
   
   /**
@@ -161,8 +162,8 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
       max_objects = tsdb.getConfig().getInt(getConfigKey(OBJECTS_LIMIT_KEY));
       size_limit = tsdb.getConfig().getInt(getConfigKey(SIZE_LIMIT_KEY));
       final String serdes_id = tsdb.getConfig().getString(getConfigKey(SERDES_KEY));
-      final TimeSeriesCacheSerdesFactory factory = tsdb.getRegistry().getPlugin(TimeSeriesCacheSerdesFactory.class, 
-          serdes_id);
+      final TimeSeriesCacheSerdesFactory factory = tsdb.getRegistry().getPlugin(
+          TimeSeriesCacheSerdesFactory.class, serdes_id);
       if (factory == null) {
         return Deferred.fromError(new IllegalArgumentException("No serdes factory found for " +
             (Strings.isNullOrEmpty(serdes_id) ? "Default" : serdes_id)));
@@ -239,19 +240,21 @@ public class GuavaLRUCache extends BaseTSDBPlugin implements
   }
   
   @Override
-  public Deferred<Void> cache(final int timestamp, final byte[] key, Collection<QueryResult> results) {
+  public Deferred<Void> cache(final int timestamp, 
+                              final byte[] key, 
+                              final long expiration,
+                              final Collection<QueryResult> results) {
     System.out.println(" [[[[[[[[ CACHING ]]]]]]: " + results);
-    cache(key, serdes.serialize(results), Integer.MAX_VALUE, /* TODO */ TimeUnit.MILLISECONDS, null);
+    cache(key, serdes.serialize(results), expiration, TimeUnit.MILLISECONDS, null);
     return Deferred.fromResult(null);
   }
   
   @Override
-  public Deferred<Void> cache(int[] timestamps, 
-                              byte[][] keys,
-                              Collection<QueryResult> results) {
+  public Deferred<Void> cache(final int[] timestamps, 
+                              final byte[][] keys,
+                              final long[] expirations,
+                              final Collection<QueryResult> results) {
     System.out.println(" [[[[[[[[ SPLITTING AND CACHING ]]]]]]: " + results);
-    /* TODO */ 
-    long[] expirations = new long[keys.length];
     Arrays.fill(expirations, Long.MAX_VALUE);
 
     cache(keys, serdes.serialize(timestamps, keys, results), expirations, TimeUnit.MILLISECONDS, null);

@@ -172,11 +172,12 @@ public class DefaultTimeSeriesCacheKeyGenerator
   @Override
   public byte[][] generate(final long query_hash, 
                            final String interval,
-                           final int[] time_ranges) {
-    if (time_ranges == null) {
+                           final int[] timestamps,
+                           final long[] expirations) {
+    if (timestamps == null) {
       throw new IllegalArgumentException("Time ranges cannot be null.");
     }
-    if (time_ranges.length < 1) {
+    if (timestamps.length < 1) {
       throw new IllegalArgumentException("Time ranges cannot be empty.");
     }
     final byte[] hash = Bytes.fromLong(query_hash);
@@ -186,12 +187,30 @@ public class DefaultTimeSeriesCacheKeyGenerator
     System.arraycopy(interval_bytes, 0, key, CACHE_PREFIX.length, interval_bytes.length);
     System.arraycopy(hash, 0, key, CACHE_PREFIX.length + interval_bytes.length, hash.length);
     
-    final byte[][] keys = new byte[time_ranges.length][];
-    for (int i = 0; i < time_ranges.length; i++) {
+    final int now = (int) (DateTime.currentTimeMillis() / 1000L);
+    final long ds_interval = expirations[0] > 0 ? expirations[0] : default_interval;
+    final long segment_interval = DateTime.parseDuration(interval) / 1000;
+    final byte[][] keys = new byte[timestamps.length][];
+    for (int i = 0; i < timestamps.length; i++) {
       final byte[] copy = Arrays.copyOf(key, key.length);
-      System.arraycopy(Bytes.fromInt(time_ranges[i]), 0, 
+      System.arraycopy(Bytes.fromInt(timestamps[i]), 0, 
           copy, CACHE_PREFIX.length + interval_bytes.length + hash.length, 4);
       keys[i] = copy;
+      
+      // expiration
+      if (now - timestamps[i] > historical_cutoff) {
+        expirations[i] = default_max_expiration;
+      } else if (timestamps[i] + segment_interval > now) {
+        expirations[i] = ds_interval;
+      } else {
+        long delta = now - timestamps[i] + segment_interval;
+        delta /= (ds_interval / 1000);
+        if (delta == 0) {
+          expirations[i] = ds_interval;
+        } else {
+          expirations[i] = ds_interval * delta;
+        }
+      }
     }
     return keys;
   }
