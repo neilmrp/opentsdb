@@ -231,6 +231,7 @@ public class PBufQuerySegmenter implements TimeSeriesCacheSerdes {
                               final byte[][] keys,
                               final Collection<QueryResult> results) {
 
+
         if (results.isEmpty() || timestamps.length == 0) {
             return new byte[][] { };
         }
